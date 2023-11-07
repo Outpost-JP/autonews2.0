@@ -15,9 +15,6 @@ GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 # エラーハンドリング用の最大リトライ回数
 MAX_RETRIES = 3
 
-# 初回実行時フラグ
-_is_first_run = True
-
 # エラー発生時のバックオフ指数的戦略と最大再試行回数
 @on_exception(expo, RequestException, max_tries=MAX_RETRIES)
 def fetch_hn_api(endpoint):
@@ -38,39 +35,33 @@ sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
 HN_API_BASE = 'https://hacker-news.firebaseio.com/v0'
 
 def get_last_checked_id():
-    global _is_first_run
-    cell = 'S1' if _is_first_run else 'D1'
+    # F1セルから最後にチェックしたIDを取得します。
+    cell = 'F1'
     value = sheet.acell(cell).value
     if not value:
         raise ValueError(f"{cell}セルに最新の記事IDが存在しません。")
-    _is_first_run = False
     return int(value)
 
 def update_news_on_sheet(last_checked_id):
     maxitem = fetch_hn_api('maxitem')
+    # 最新の500件の記事IDを取得
+    new_news_ids = fetch_hn_api('newstories')
     
-    if maxitem > last_checked_id:
-        latest_news_ids = [news_id for news_id in fetch_hn_api('newstories') if news_id > last_checked_id][:50]
+    # last_checked_idとmaxitemの間にある新しい記事IDを取得
+    new_news_ids = [news_id for news_id in new_news_ids if last_checked_id < news_id <= maxitem]
+    
+    for count, news_id in enumerate(new_news_ids):
+        try:
+            news_data = fetch_hn_api(f'item/{news_id}')
+            if news_data and not news_data.get('dead'):
+                write_news_to_sheet(news_data)
+        except Exception as e:
+            print(f"Non-fatal exception caught: {e}")
         
-        for count, news_id in enumerate(latest_news_ids):
-            if news_id <= last_checked_id:
-                continue
+        time.sleep(1)  # news_idごとに1秒間隔
+        if count % 10 == 9:
+            time.sleep(5)  # 10個ごとに追加で5秒間隔
 
-            try:
-                news_data = fetch_hn_api(f'item/{news_id}')
-                if news_data and not news_data.get('dead'):
-                    write_news_to_sheet(news_data)
-            except Exception as e:
-                print(f"Non-fatal exception caught: {e}")
-            
-            time.sleep(1) # news_idごとに1秒間隔
-            if count % 10 == 9:
-                time.sleep(5) # 10個ごとに追加で5秒間隔
-
-        last_checked_id = maxitem
-
-    # Update the last checked ID
-    sheet.update('D1', last_checked_id) 
 
 def write_news_to_sheet(news_data):
     datetime_jst = datetime.utcfromtimestamp(news_data['time']) + timedelta(hours=9)

@@ -1,4 +1,6 @@
-import asyncio
+#コンテンツ内容テスト
+
+'''import asyncio
 from langchain.document_loaders import HNLoader
 
 # 非同期でHNLoaderを使用してデータをロードし、テキストファイルに保存する
@@ -15,3 +17,15 @@ async def main():
 
 # asyncioを使用してメイン関数を実行
 asyncio.run(main())
+'''
+
+#base64テスト
+import os
+import base64
+
+'''
+GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
+# Base64エンコードされたGoogleクレデンシャルをデコード
+creds = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
+print(creds)
+'''
