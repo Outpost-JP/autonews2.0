@@ -39,7 +39,7 @@ HN_API_BASE = 'https://hacker-news.firebaseio.com/v0'
 
 def get_last_checked_id():
     global _is_first_run
-    cell = 'S1' if _is_first_run else 'B1'
+    cell = 'S1' if _is_first_run else 'D1'
     value = sheet.acell(cell).value
     if not value:
         raise ValueError(f"{cell}セルに最新の記事IDが存在しません。")
@@ -50,7 +50,7 @@ def update_news_on_sheet(last_checked_id):
     maxitem = fetch_hn_api('maxitem')
     
     if maxitem > last_checked_id:
-        latest_news_ids = fetch_hn_api('newstories')[:50]
+        latest_news_ids = [news_id for news_id in fetch_hn_api('newstories') if news_id > last_checked_id][:50]
         
         for count, news_id in enumerate(latest_news_ids):
             if news_id <= last_checked_id:
@@ -70,7 +70,7 @@ def update_news_on_sheet(last_checked_id):
         last_checked_id = maxitem
 
     # Update the last checked ID
-    sheet.update('B1', last_checked_id) 
+    sheet.update('D1', last_checked_id) 
 
 def write_news_to_sheet(news_data):
     datetime_jst = datetime.utcfromtimestamp(news_data['time']) + timedelta(hours=9)
