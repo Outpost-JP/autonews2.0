@@ -44,6 +44,7 @@ def get_last_checked_id():
 
 def update_news_on_sheet(last_checked_id):
     maxitem = fetch_hn_api('maxitem')
+    print(maxitem)
     # 最新の500件の記事IDを取得
     new_news_ids = fetch_hn_api('newstories')
     
@@ -74,6 +75,12 @@ def write_news_to_sheet(news_data):
     # Insert the news data row into the spreadsheet, waiting 1 second before each write operation
     write_to_sheet_with_retry(row)
     time.sleep(1)
+    '''
+    title = news_data.get('title')
+    url = news_data.get('url')
+    if title and url:
+        
+    '''
 
 @on_exception(expo, (gspread.exceptions.APIError, gspread.exceptions.GSpreadException), max_tries=MAX_RETRIES)
 def write_to_sheet_with_retry(row):
