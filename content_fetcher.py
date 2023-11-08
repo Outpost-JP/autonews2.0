@@ -152,13 +152,13 @@ async def process_and_write_content(title, url):
     text_content = html2text(html_content)
     categories, summary, opinion, lead = generate_textual_content(text_content)
     
-    # Get current datetime
+    # 時刻
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Prepare the row to be written to the sheet
+    # 個々の順番変えた方が分かりやすそう
     row = [title, url, now, categories, summary, opinion, lead]
 
-    # Write to the Google Sheet with retry logic
+    # リトライロジック実装できてるか確認すること。
     write_to_sheet_with_retry(row)
 
 # Main function to be called with the news data
