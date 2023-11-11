@@ -78,7 +78,7 @@ schema = {
 def generate_category(content):
     try:
         # LLM (Language Model) を初期化
-        llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+        llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview")
         # 抽出チェーンを作成
         chain = create_extraction_chain(schema, llm)
         extracted_categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(2個から3個)を生成してください。\n\n{content}")
@@ -91,7 +91,7 @@ def generate_category(content):
 def summarize_content(content):
     try:
         summary = openai_api_call(
-        "gpt-3.5-turbo-16k-0613",
+        "gpt-4-1106-preview",
         0,
         [
             {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章をもとに、できる限り正確な内容にすることを意識して要約してください。"},
@@ -107,7 +107,7 @@ def summarize_content(content):
 def generate_opinion(content):
     try:
         opinion = openai_api_call(
-        "gpt-4",
+        "gpt-4-1106-preview",
         0.6,
         [
             {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章をもとに、文章に関する感想や意見を生成してください。"},
@@ -123,7 +123,7 @@ def generate_opinion(content):
 def generate_lead(content):
     try:
         lead = openai_api_call(
-        "gpt-3.5-turbo-0613",
+        "gpt-4-1106-preview",
         0.6,
         [
             {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。"},
