@@ -19,8 +19,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # 環境変数からスプレッドシートIDとクレデンシャルを取得
-SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
-SHEET_NAME = 'SHEET2_NAME!A2'  
+SPREADSHEET_ID = os.getenv('SPREADSHEET_ID') 
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
@@ -87,7 +86,7 @@ def generate_category(content):
         llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview")
         # 抽出チェーンを作成
         chain = create_extraction_chain(schema, llm)
-        extracted_categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(2個から3個)を生成してください。\n\n{content}")
+        extracted_categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(2個から3個)を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。 \n\n{content}")
         return extracted_categories
     except Exception as e:
         print(f"Error in category generation: {e}")
@@ -100,7 +99,7 @@ def summarize_content(content):
         "gpt-4-1106-preview",
         0,
         [
-            {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章をもとに、できる限り正確な内容にすることを意識して要約してください。"},
+            {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章をもとに、できる限り正確な内容にすることを意識して要約してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
             {"role": "user", "content": content}
         ]
         )
@@ -116,7 +115,7 @@ def generate_opinion(content):
         "gpt-4-1106-preview",
         0.6,
         [
-            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章をもとに、文章に関する感想や意見を生成してください。"},
+            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章をもとに、文章に関する感想や意見を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
             {"role": "user", "content": content}
         ]
         )
@@ -132,7 +131,7 @@ def generate_lead(content):
         "gpt-4-1106-preview",
         0.6,
         [
-            {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。"},
+            {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
             {"role": "user", "content": content}
         ]
     )
