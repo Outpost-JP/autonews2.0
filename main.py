@@ -81,9 +81,12 @@ def write_news_to_sheet(news_data):
         news_data.get('url'),
         news_data.get('id')
     ]
-    write_to_sheet_with_retry(row)
+    try:
+        write_to_sheet_with_retry(row)
+        logging.info(f"ニュース {news_data.get('id')} をスプレッドシートに書き込みました。")
+    except Exception as e:
+        logging.error(f"ニュース {news_data.get('id')} のスプレッドシートへの書き込みに失敗しました: {e}")
     time.sleep(1)
-    return row
 
 @on_exception(expo, (gspread.exceptions.APIError, gspread.exceptions.GSpreadException), max_tries=MAX_RETRIES)
 def write_to_sheet_with_retry(row):
