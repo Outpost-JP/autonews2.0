@@ -36,15 +36,21 @@ except Exception as e:
     logging.error(f"gspreadクライアントの認証中にエラーが発生しました: {e}")
     raise
 
-# URLからコンテンツを取得してテキストに変換する非同期関数
 async def fetch_content_from_url(url):
     try:
         logging.info(f"URLからコンテンツの取得を開始: {url}")
-        async with aiohttp.ClientSession() as session:
+
+        # ユーザーエージェントを設定
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+        }
+
+        async with aiohttp.ClientSession(headers=headers) as session:
             async with session.get(url) as response:
                 content = await response.text()
                 logging.info(f"URLからコンテンツの取得が成功: {url}")
                 return content
+
     except Exception as e:
         logging.error(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
         raise
