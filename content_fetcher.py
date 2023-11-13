@@ -89,12 +89,15 @@ def generate_category(content):
         llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview")
         # 抽出チェーンを作成
         chain = create_extraction_chain(schema, llm)
-        extracted_categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(2個から3個)を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。 \n\n{content}")
-        return extracted_categories
+        categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(1個から3個)を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。 \n\n{content}")
+        
+        # カテゴリーリストをコンマ区切りの文字列に変換
+        categories = ', '.join(categories)
+        return categories
     except Exception as e:
         print(f"Error in category generation: {e}")
         traceback.print_exc()
-        return []
+        return ""
 
 async def summarize_content(content):
     return await openai_api_call(
@@ -116,9 +119,9 @@ async def generate_opinion(content):
         ]
     )
 
-def generate_lead(content):
+async def generate_lead(content):
     try:
-        lead = openai_api_call(
+        lead = await openai_api_call(
             "gpt-4",
             0.6,
             [
@@ -128,18 +131,21 @@ def generate_lead(content):
         )
         return lead
     except Exception as e:
-        print(f"Error in lead generation: {e}")
+        print(f"リード文作成時にエラーが出ました。: {e}")
         traceback.print_exc()
         return ""
 
 # カテゴリー、要約、意見、リード文を生成する非同期関数
 async def generate_textual_content(content):
-    # 要約と意見を非同期で生成
-    summary, opinion = await asyncio.gather(summarize_content(content), generate_opinion(content))
+    # 要約と意見、リード文を非同期で生成
+    summary, opinion, lead = await asyncio.gather(
+        summarize_content(content), 
+        generate_opinion(content),
+        generate_lead(content)
+    )
 
-    # 要約を基にカテゴリとリード文を生成
+    # 要約を基にカテゴリを生成
     categories = generate_category(summary)
-    lead = generate_lead(summary)
 
     return categories, summary, opinion, lead
 
@@ -186,4 +192,3 @@ def main(event, context):
             asyncio.run(process_and_write_content(title, url))
     except Exception as e:
         logging.error(f"メイン処理中にエラーが発生しました: {e}")
-
