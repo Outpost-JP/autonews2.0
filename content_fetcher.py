@@ -13,6 +13,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import create_extraction_chain
 from google.cloud import pubsub_v1
 import logging
+import time
+
 
 # ロギングの設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,10 +46,11 @@ async def fetch_content_from_url(url):
         }
 
         async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url) as response:
+            async with session.get(url, timeout=10) as response:
                 content = await response.text()
-                logging.info(f"URLからコンテンツの取得が成功: {url}")
-                return content
+
+            logging.info(f"URLからコンテンツの取得が成功: {url}")
+            return content
 
     except Exception as e:
         logging.error(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
@@ -142,6 +145,7 @@ async def generate_textual_content(content):
 @on_exception(expo, gspread.exceptions.APIError, max_tries=3)
 @on_exception(expo, gspread.exceptions.GSpreadException, max_tries=3)
 def write_to_sheet_with_retry(row):
+    time.sleep(1)  # 1秒スリープを追加
     try:
         logging.info("Googleスプレッドシートへの書き込みを開始")
         sheet.insert_row(row, index=2)
