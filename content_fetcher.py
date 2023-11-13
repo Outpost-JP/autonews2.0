@@ -14,7 +14,6 @@ from langchain.chains import create_extraction_chain
 from google.cloud import pubsub_v1
 import logging
 
-
 # ロギングの設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -55,7 +54,7 @@ async def fetch_content_from_url(url):
         raise
 
 # OpenAI API呼び出すための関数
-def openai_api_call(model, temperature, messages):
+async def openai_api_call(model, temperature, messages):
     try:
         logging.info(f"OpenAI API呼び出し開始: モデル={model}, 温度={temperature}")
         response = openai.ChatCompletion.create(
@@ -68,7 +67,6 @@ def openai_api_call(model, temperature, messages):
     except Exception as e:
         logging.error(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
         raise
-
 
 # スキーマを定義
 schema = {
@@ -93,63 +91,51 @@ def generate_category(content):
         traceback.print_exc()
         return []
 
-def summarize_content(content):
-    try:
-        summary = openai_api_call(
+async def summarize_content(content):
+    return await openai_api_call(
         "gpt-4-1106-preview",
         0,
         [
             {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章をもとに、できる限り正確な内容にすることを意識して要約してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
             {"role": "user", "content": content}
         ]
-        )
-        return summary
-    except Exception as e:
-        print(f"Error in summarization: {e}")
-        traceback.print_exc()
-        return ""
+    )
 
-def generate_opinion(content):
-    try:
-        opinion = openai_api_call(
+async def generate_opinion(content):
+    return await openai_api_call(
         "gpt-4-1106-preview",
         0.6,
         [
             {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章をもとに、文章に関する感想や意見を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
             {"role": "user", "content": content}
         ]
-        )
-        return opinion
-    except Exception as e:
-        print(f"Error in opinion generation: {e}")
-        traceback.print_exc()
-        return ""
+    )
 
 def generate_lead(content):
     try:
         lead = openai_api_call(
-        "gpt-4-1106-preview",
-        0.6,
-        [
-            {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
-            {"role": "user", "content": content}
-        ]
-    )
+            "gpt-4-1106-preview",
+            0.6,
+            [
+                {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
+                {"role": "user", "content": content}
+            ]
+        )
         return lead
     except Exception as e:
         print(f"Error in lead generation: {e}")
         traceback.print_exc()
         return ""
 
-# カテゴリー、要約、意見、リード文を生成する関数
-def generate_textual_content(content):
+# カテゴリー、要約、意見、リード文を生成する非同期関数
+async def generate_textual_content(content):
+    # 要約と意見を非同期で生成
+    summary, opinion = await asyncio.gather(summarize_content(content), generate_opinion(content))
 
+    # 要約を基にカテゴリとリード文を生成
+    categories = generate_category(summary)
+    lead = generate_lead(summary)
 
-    #非同期で行うと要約が出来上がる前にほかの関数が走ってエラー出そうだからそこだけ修正すること。
-    categories = generate_category(content)
-    summary = summarize_content(content)
-    opinion = generate_opinion(content)
-    lead = generate_lead(content)
     return categories, summary, opinion, lead
 
 # Function to write to the Google Sheet with exponential backoff
@@ -169,7 +155,7 @@ async def process_and_write_content(title, url):
     logging.info(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
     html_content = await fetch_content_from_url(url)
     text_content = html2text(html_content)
-    categories, summary, opinion, lead = generate_textual_content(text_content)
+    categories, summary, opinion, lead = await generate_textual_content(text_content)
     # 時刻
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     row = [title, url, now, categories, summary, opinion, lead]
@@ -188,3 +174,4 @@ if __name__ == "__main__":
         'url': 'http://example.com'
     }
     main(news_data)
+
