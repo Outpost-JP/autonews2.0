@@ -12,6 +12,7 @@ from datetime import datetime
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import create_extraction_chain
 from google.cloud import pubsub_v1
+from urllib.parse import urlparse
 import logging
 import time
 
@@ -156,6 +157,15 @@ def write_to_sheet_with_retry(row):
 
 # Function to process content and write it to the sheet
 async def process_and_write_content(title, url):
+    # URLからドメインを解析
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+
+    # 特定のドメインをチェックしてスキップ
+    if any(excluded_domain in domain for excluded_domain in ['github.com', 'youtube.com', 'wikipedia.org']):
+        logging.info(f"処理をスキップ: {title} ({url}) は除外されたドメインに属しています。")
+        return
+
     logging.info(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
     html_content = await fetch_content_from_url(url)
     text_content = html2text(html_content)
@@ -167,10 +177,13 @@ async def process_and_write_content(title, url):
 
 # Main function to be called with the news data
 def main(news_data):
-    title = news_data.get('title')
-    url = news_data.get('url')
-    if title and url:
-        asyncio.run(process_and_write_content(title, url))
+    try:
+        title = news_data.get('title')
+        url = news_data.get('url')
+        if title and url:
+            asyncio.run(process_and_write_content(title, url))
+    except Exception as e:
+        logging.error(f"メイン処理中にエラーが発生しました: {e}")
 
 if __name__ == "__main__":
     news_data = {
