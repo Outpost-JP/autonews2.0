@@ -4,6 +4,7 @@ import base64
 import asyncio
 import aiohttp
 import openai
+from openai import OpenAI, AsyncOpenAI
 import traceback
 from html2text import html2text
 import gspread
@@ -37,6 +38,12 @@ except Exception as e:
     logging.error(f"gspreadクライアントの認証中にエラーが発生しました: {e}")
     raise
 
+# OpenAIのクライアントを初期化
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# 非同期用のOpenAIクライアント
+async_client = AsyncOpenAI()
+
 async def fetch_content_from_url(url):
     try:
         logging.info(f"URLからコンテンツの取得を開始: {url}")
@@ -57,17 +64,11 @@ async def fetch_content_from_url(url):
         logging.error(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
         raise
 
-# OpenAI API呼び出すための関数
 async def openai_api_call(model, temperature, messages):
     try:
-        logging.info(f"OpenAI API呼び出し開始: モデル={model}, 温度={temperature}")
-        response = openai.ChatCompletion.create(
-            model=model,
-            temperature=temperature,
-            messages=messages
-        )
-        logging.info("OpenAI API呼び出しが成功しました")
-        return response.choices[0].message['content']
+        # OpenAI API呼び出しを行う非同期関数
+        response = await async_client.chat.completions.create(model=model, temperature=temperature, messages=messages)
+        return response.choices[0].message.content  # 辞書型アクセスから属性アクセスへ変更
     except Exception as e:
         logging.error(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
         raise
@@ -185,5 +186,4 @@ def main(event, context):
             asyncio.run(process_and_write_content(title, url))
     except Exception as e:
         logging.error(f"メイン処理中にエラーが発生しました: {e}")
-
 
