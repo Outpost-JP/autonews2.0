@@ -176,8 +176,9 @@ async def process_and_write_content(title, url):
     write_to_sheet_with_retry(row)
 
 # Main function to be called with the news data
-def main(news_data):
+def main(event, context):
     try:
+        news_data = json.loads(base64.b64decode(event['data']).decode('utf-8'))
         title = news_data.get('title')
         url = news_data.get('url')
         if title and url:
@@ -185,10 +186,4 @@ def main(news_data):
     except Exception as e:
         logging.error(f"メイン処理中にエラーが発生しました: {e}")
 
-if __name__ == "__main__":
-    news_data = {
-        'title': 'Example Title',
-        'url': 'http://example.com'
-    }
-    main(news_data)
 
