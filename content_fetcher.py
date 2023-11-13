@@ -118,7 +118,7 @@ async def generate_opinion(content):
 def generate_lead(content):
     try:
         lead = openai_api_call(
-            "gpt-4-1106-preview",
+            "gpt-4",
             0.6,
             [
                 {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、日本語のリード文を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},

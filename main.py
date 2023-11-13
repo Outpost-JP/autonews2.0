@@ -101,7 +101,17 @@ def publish_to_topic(row):
     try:
         publisher = pubsub_v1.PublisherClient()
         topic_path = publisher.topic_path('あなたのGCPプロジェクトID', 'あなたのトピック名')
-        data = json.dumps(row).encode("utf-8")
+
+        # rowからタイトルとURLを取得
+        message_data = {
+            "title": row[1],  # タイトル
+            "url": row[2]     # URL
+        }
+
+        # メッセージデータをJSON形式にエンコード
+        data = json.dumps(message_data).encode("utf-8")
+        
+        # データをパブリッシュ
         publisher.publish(topic_path, data)
         logging.info("Data published to Pub/Sub")
     except Exception as e:
