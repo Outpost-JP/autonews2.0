@@ -23,19 +23,19 @@ asyncio.run(main())
 import os
 import base64
 
-
+'''
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 # Base64エンコードされたGoogleクレデンシャルをデコード
 creds = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
 print(creds)
 
 #base64エンコードテスト
-
+'''
 import base64
 
 # JSONファイルのパスを指定
-file_path = 'C:/Users/araki/Downloads/news-403809-1e7d2aafbf5f.json'
-'''
+file_path = 'C:/Users/araki/Downloads/div/ニュース用クレデンシャル.json'
+
 # ファイルを読み込み
 with open(file_path, 'rb') as file:
     json_data = file.read()
@@ -45,4 +45,3 @@ encoded_data = base64.b64encode(json_data)
 
 # エンコードされたデータを文字列として出力
 print(encoded_data.decode('utf-8'))
-'''

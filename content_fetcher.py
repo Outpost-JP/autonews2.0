@@ -41,8 +41,9 @@ except Exception as e:
 # OpenAIのクライアントを初期化
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
+openai_timeout = 90
 # 非同期用のOpenAIクライアント
-async_client = AsyncOpenAI()
+async_client = AsyncOpenAI(timeout=openai_timeout)
 
 async def fetch_content_from_url(url):
     try:
@@ -64,91 +65,60 @@ async def fetch_content_from_url(url):
         logging.error(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
         raise
 
-async def openai_api_call(model, temperature, messages):
+async def openai_api_call(model, temperature, messages, max_tokens):
     try:
         # OpenAI API呼び出しを行う非同期関数
-        response = await async_client.chat.completions.create(model=model, temperature=temperature, messages=messages)
+        response = await async_client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens)
         return response.choices[0].message.content  # 辞書型アクセスから属性アクセスへ変更
     except Exception as e:
         logging.error(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
         raise
 
-# スキーマを定義
-schema = {
-    "properties": {
-        "category1": {"type": "string"},
-        "category2": {"type": "string"},
-        "category3": {"type": "string"},
-    },
-    "required": ["category1"]
-}
-
-def generate_category(content):
-    try:
-        # LLM (Language Model) を初期化
-        llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview")
-        # 抽出チェーンを作成
-        chain = create_extraction_chain(schema, llm)
-        categories = chain.run(f"あなたは優秀なカテゴリ生成アシスタントです。提供された文章をもとに、カテゴリ(1個から3個)を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。 \n\n{content}")
-        
-        # カテゴリーリストをコンマ区切りの文字列に変換
-        categories = ', '.join(categories)
-        return categories
-    except Exception as e:
-        print(f"Error in category generation: {e}")
-        traceback.print_exc()
-        return ""
-
 async def summarize_content(content):
-    return await openai_api_call(
-        "gpt-4-1106-preview",
+    try:
+        summary = await openai_api_call(
+        "gpt-3.5-turbo-1106",
         0,
         [
-            {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章をもとに、できる限り正確な内容にすることを意識して要約してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。また、ウェブサイトに対する解説は書き出さないでください。"},
-            {"role": "user", "content": content}
-        ]
-    )
-
-async def generate_opinion(content):
-    return await openai_api_call(
-        "gpt-4-1106-preview",
-        0.6,
-        [
-            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章をもとに、文章に関する感想や意見を生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。"},
-            {"role": "user", "content": content}
-        ]
-    )
-
-async def generate_lead(content):
-    try:
-        lead = await openai_api_call(
-            "gpt-4",
-            0.6,
-            [
-                {"role": "system", "content": "あなたは優秀なリード文生成アシスタントです。提供された文章をもとに、６０文字程度の日本語のリード文を、新聞のような文体で生成してください。なお、入力内容の有無にかかわらず、日本語で出力を行ってください。ウェブサイトに関する情報を出力しないでよいですが、報じたソースもとについての出力については構いません。"},
-                {"role": "user", "content": content}
-                #maxtoken180,temp0
-            ]
+            {"role": "system", "content": "The user will provide you with text in triple quotes. Summarize this sentence in about 700 characters in Japanese."},
+            {"role": "user", "content": f'"""{content}"""'}
+        ],
+        1500
         )
-        return lead
+        return summary
     except Exception as e:
-        print(f"リード文作成時にエラーが出ました。: {e}")
+        print(f"要約時にエラーが発生しました。: {e}")
+        traceback.print_exc()
+        return ""
+        
+    
+
+async def generate_bool(content):
+    try:
+        bool = await openai_api_call(
+            "gpt-3.5-turbo-1106",
+            0,
+            [
+                {"role": "system", "content": "あなたは優秀な先進技術ニュースサイトのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、与えられた文章を載せるか否かを判断して、簡潔に答えてください。最初に載せるか否かを載せる,載せないのみで出力してください。"},
+                {"role": "user", "content": content}
+            ],
+            30
+        )
+        return bool
+    except Exception as e:
+        print(f"判別時にエラーが発生しました。: {e}")
         traceback.print_exc()
         return ""
 
-# カテゴリー、要約、意見、リード文を生成する非同期関数
+# カテゴリー、要約、リード文を生成する非同期関数
 async def generate_textual_content(content):
-    # 要約と意見、リード文を非同期で生成
-    summary, opinion, lead = await asyncio.gather(
-        summarize_content(content), 
-        generate_opinion(content),
-        generate_lead(content)
-    )
+    # 先に要約を行う
+    summary = await summarize_content(content)
+    
+    # 要約に基づきリード文を生成
+    lead_sentence = await generate_bool(summary)
 
-    # 要約を基にカテゴリを生成
-    categories = generate_category(summary)
-
-    return categories, summary, opinion, lead
+    return summary, lead_sentence
 
 # Function to write to the Google Sheet with exponential backoff
 @on_exception(expo, gspread.exceptions.APIError, max_tries=3)
@@ -177,10 +147,10 @@ async def process_and_write_content(title, url):
     logging.info(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
     html_content = await fetch_content_from_url(url)
     text_content = html2text(html_content)
-    categories, summary, opinion, lead = await generate_textual_content(text_content)
+    summary, bool = await generate_textual_content(text_content)
     # 時刻
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = [title, url, now, categories, summary, opinion, lead]
+    row = [title, url, now, bool, summary]
     write_to_sheet_with_retry(row)
 
 # Main function to be called with the news data
