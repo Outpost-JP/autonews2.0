@@ -80,10 +80,9 @@ async def summarize_content(content):
         "gpt-3.5-turbo-1106",
         0,
         [
-            {"role": "system", "content": "The user will provide you with text in triple quotes. Summarize this sentence in about 700 characters in Japanese."},
-            {"role": "user", "content": f'"""{content}"""'}
+            {"role": "system", "content": f'あなたは優秀な要約アシスタントです。"""{content}"""の内容をできる限り多くの情報を残しながら日本語で要約して出力してください。'},
+            {"role": "user", "content": content}
         ],
-        3000
         )
         return summary
     except Exception as e:
