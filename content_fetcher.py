@@ -41,7 +41,7 @@ except Exception as e:
 # OpenAIのクライアントを初期化
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-openai_timeout = 90
+openai_timeout = 120
 # 非同期用のOpenAIクライアント
 async_client = AsyncOpenAI(timeout=openai_timeout)
 
@@ -83,7 +83,7 @@ async def summarize_content(content):
             {"role": "system", "content": "The user will provide you with text in triple quotes. Summarize this sentence in about 700 characters in Japanese."},
             {"role": "user", "content": f'"""{content}"""'}
         ],
-        1500
+        3000
         )
         return summary
     except Exception as e:
