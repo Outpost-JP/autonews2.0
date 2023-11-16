@@ -173,7 +173,7 @@ paramater = '''
         }
         "reason": {
         "type": "string",
-        "description": "the basis for each numerical score. Output in Japanese"
+        "description": "the basis for each numerical score. Output in 1-sentence Japanese with respect to all parameters"
         }
     },
     "required": ["importance", "timeliness", "objectivity", "originality", "target_audience", "diversity", "relation_to_advertising", "security_issues", "social_responsibility", "social_significance", "reason"]

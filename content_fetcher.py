@@ -41,7 +41,7 @@ except Exception as e:
 # OpenAIのクライアントを初期化
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-openai_timeout = 120
+openai_timeout = 180
 # 非同期用のOpenAIクライアント
 async_client = AsyncOpenAI(timeout=openai_timeout)
 
@@ -65,10 +65,10 @@ async def fetch_content_from_url(url):
         logging.error(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
         raise
 
-async def openai_api_call(model, temperature, messages, max_tokens):
+async def openai_api_call(model, temperature, messages, max_tokens, response_format):
     try:
         # OpenAI API呼び出しを行う非同期関数
-        response = await async_client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens)
+        response = await async_client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens, response_format=response_format)
         return response.choices[0].message.content  # 辞書型アクセスから属性アクセスへ変更
     except Exception as e:
         logging.error(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
@@ -83,29 +83,84 @@ async def summarize_content(content):
             {"role": "system", "content": f'あなたは優秀な要約アシスタントです。"""{content}"""の内容をできる限り多くの情報を残しながら日本語で要約して出力してください。'},
             {"role": "user", "content": content}
         ],
+        2800,
+        # タイプ指定をサボらない
+        { "type": "text" }
         )
         return summary
     except Exception as e:
         print(f"要約時にエラーが発生しました。: {e}")
         traceback.print_exc()
         return ""
-        
+
+paramater = '''
+{
+    "properties": {
+        "importance": {
+            "type": "integer",
+            "description": "How impactful the topic of the article is. Scale: 0-10."
+        },
+        "timeliness": {
+            "type": "integer",
+            "description": "How relevant the information is to current events or trends. Scale: 0-10."
+        },
+        "objectivity": {
+            "type": "integer",
+            "description": "Whether the information is presented without bias or subjective opinion. Scale: 0-10."
+        },
+        "originality": {
+            "type": "integer",
+            "description": "The novelty or uniqueness of the content. Scale: 0-10."
+        },
+        "target_audience": {
+            "type": "integer",
+            "description": "How well the content is adjusted for a specific audience. Scale: 0-10."
+        },
+        "diversity": {
+            "type": "integer",
+            "description": "Reflection of different perspectives or cultures. Scale: 0-10."
+        },
+        "relation_to_advertising": {
+            "type": "integer",
+            "description": "If the content is biased due to advertising. Scale: 0-10."
+        },
+        "security_issues": {
+            "type": "integer",
+            "description": "Potential for raising security concerns. Scale: 0-10."
+        },
+        "social_responsibility": {
+            "type": "integer",
+            "description": "How socially responsible the content presentation is. Scale: 0-10."
+        },
+        "social_significance": {
+            "type": "integer",
+            "description": "The social impact of the content. Scale: 0-10."
+        }
+        "reason": {
+        "type": "string",
+        "description": "the basis for each numerical score. Output in 1-sentence Japanese with respect to all parameters"
+        }
+    },
+    "required": ["importance", "timeliness", "objectivity", "originality", "target_audience", "diversity", "relation_to_advertising", "security_issues", "social_responsibility", "social_significance", "reason"]
+}
+'''
     
 
-async def generate_bool(content):
+async def generate_score(summary):
     try:
-        bool = await openai_api_call(
+        score = await openai_api_call(
             "gpt-3.5-turbo-1106",
             0,
             [
-                {"role": "system", "content": "あなたは優秀な先進技術ニュースサイトのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、与えられた文章を載せるか否かを判断して、簡潔に答えてください。最初に載せるか否かを載せる,載せないのみで出力してください。"},
-                {"role": "user", "content": content}
+                {"role": "system", "content": f'あなたは優秀な先進技術メディアのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、"""{summary}"""を10点満点でスコアリングして、JSON形式で返します。平均点は5点でスコアを付けるようにしてください。"""{paramater}"""のJSON形式で返してください。'},
+                {"role": "user", "content": summary}
             ],
-            30
-        )
-        return bool
+            4000,
+            { "type":"json_object" }
+            )
+        return score
     except Exception as e:
-        print(f"判別時にエラーが発生しました。: {e}")
+        print(f"スコア測定時にエラーが発生しました。: {e}")
         traceback.print_exc()
         return ""
 
@@ -115,10 +170,15 @@ async def generate_textual_content(content):
     summary = await summarize_content(content)
     
     # 要約に基づきリード文を生成
-    lead_sentence = await generate_bool(summary)
-
-    return summary, lead_sentence
-
+    score = await generate_score(summary)
+    score_json = json.loads(score)
+    #それぞれの内容を取得
+    keys = ["importance", "timeliness", "objectivity", "originality", "target_audience", "diversity",  "relation_to_advertising", "security_issues", "social_responsibility", "social_significance"]
+    #scoresはスコアの中身全部のこと
+    scores = [str(score_json[key]) for key in keys]
+    reason = score_json["reason"]
+    #それぞれの内容を返す。
+    return summary, *scores, reason
 # Function to write to the Google Sheet with exponential backoff
 @on_exception(expo, gspread.exceptions.APIError, max_tries=3)
 @on_exception(expo, gspread.exceptions.GSpreadException, max_tries=3)
@@ -146,10 +206,10 @@ async def process_and_write_content(title, url):
     logging.info(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
     html_content = await fetch_content_from_url(url)
     text_content = html2text(html_content)
-    summary, bool = await generate_textual_content(text_content)
+    summary, scores, reason = await generate_textual_content(text_content)
     # 時刻
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = [title, url, now, bool, summary]
+    row = [title, url, now, scores, reason, summary]
     write_to_sheet_with_retry(row)
 
 # Main function to be called with the news data
