@@ -10,7 +10,7 @@ from backoff import expo, on_exception
 from google.cloud import pubsub_v1
 from gspread import service_account_from_dict  
 from html2text import html2text
-from openai import AsyncOpenAI
+from openai import OpenAI
 from urllib.parse import urlparse
 
 import gspread
@@ -38,25 +38,25 @@ def init_gspread():
 SHEET_CLIENT = init_gspread()
 
 # OpenAIの非同期クライアント初期化  
-def init_async_openai():
-  return AsyncOpenAI(api_key=OPENAI_API_KEY)
+def init_openai():
+  return OpenAI(api_key=OPENAI_API_KEY)
 
 # OpenAI API呼び出し関数
-async def openai_api_call(model, temperature, messages, max_tokens, response_format):
-    client = init_async_openai() 
+def openai_api_call(model, temperature, messages, max_tokens, response_format):
+    client = init_openai() 
     try:
         # OpenAI API呼び出しを行う非同期関数
-        response = await client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens, response_format=response_format)
+        response = client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens, response_format=response_format)
         return response.choices[0].message.content  # 辞書型アクセスから属性アクセスへ変更
     except Exception as e:
-        logging.ERROR(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
+        logging.error(f"OpenAI API呼び出し中にエラーが発生しました: {e}")
         raise
 
 
 #　要約関数を書き出す。
-async def summarize_content(content):
+def summarize_content(content):
     try:
-        summary = await openai_api_call(
+        summary = openai_api_call(
         "gpt-3.5-turbo-1106",
         0,
         [
@@ -69,7 +69,7 @@ async def summarize_content(content):
         )
         return summary
     except Exception as e:
-        logging.INFO(f"要約時にエラーが発生しました。: {e}")
+        logging.info(f"要約時にエラーが発生しました。: {e}")
         traceback.print_exc()
         raise
     
@@ -127,9 +127,9 @@ paramater = '''
 '''
 
 # スコアを書き出す
-async def generate_score(summary):
+def generate_score(summary):
     try:
-        score = await openai_api_call(
+        score = openai_api_call(
             "gpt-3.5-turbo-1106",
             0,
             [
@@ -141,66 +141,66 @@ async def generate_score(summary):
             )
         return score
     except Exception as e:
-        logging.WARNING(f"スコア測定時にエラーが発生しました。: {e}")
+        logging.warning(f"スコア測定時にエラーが発生しました。: {e}")
         traceback.print_exc()
         return ""
     
 # スプレッドシートに書き出す
-@on_exception(expo, gspread.exceptions.APIError, max_tries=3)
+@on_exception(expo, gspread.exceptions.APIerror, max_tries=3)
 @on_exception(expo, gspread.exceptions.GSpreadException, max_tries=3)
 def write_to_spreadsheet(row):
     time.sleep(1)  # 1秒スリープを追加
     try:
-        logging.INFO(f"スプレッドシートへの書き込みを開始: {row}")
+        logging.info(f"スプレッドシートへの書き込みを開始: {row}")
         # スプレッドシートの初期化
         worksheet = SHEET_CLIENT
 
         # スプレッドシートに書き込み
         worksheet.append_row(row)
 
-        logging.INFO(f"スプレッドシートへの書き込みが成功: {row}")
+        logging.info(f"スプレッドシートへの書き込みが成功: {row}")
 
-    except gspread.exceptions.APIError as e:
-        logging.WARNING(f"一時的なエラー、リトライ可能: {e}")
+    except gspread.exceptions.APIerror as e:
+        logging.warning(f"一時的なエラー、リトライ可能: {e}")
         raise 
 
     except gspread.exceptions.GSpreadException as e:
-        logging.ERROR(f"致命的なエラー: {e}")
+        logging.error(f"致命的なエラー: {e}")
     raise
 
     
 # URLからコンテンツを取得する関数
-async def fetch_content_from_url(url):
+def fetch_content_from_url(url):
     try:
-        logging.INFO(f"URLからコンテンツの取得を開始: {url}")
+        logging.info(f"URLからコンテンツの取得を開始: {url}")
 
         # ユーザーエージェントを設定
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
         }
 
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=100) as response:
-                content = await response.text()
+        with aiohttp.ClientSession(headers=headers) as session:
+            with session.get(url, timeout=100) as response:
+                content = response.text()
 
-            logging.INFO(f"URLからコンテンツの取得が成功: {url}")
+            logging.info(f"URLからコンテンツの取得が成功: {url}")
             return content
 
     except Exception as e:
-        logging.WARNING(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
+        logging.warning(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
         raise
 
 #　コンテンツをパースする関数 
-async def parse_content(content):
+def parse_content(content):
     try:
         text_content = html2text(content)
         return text_content.replace('\n', ' ')
     except Exception as e:
-        logging.WARNING(f"コンテンツのパース中にエラーが発生しました: {e}")
+        logging.warning(f"コンテンツのパース中にエラーが発生しました: {e}")
         raise
 
 # メイン関数
-async def main(event, context):
+def main(event, context):
     
     try:
         news_data = json.loads(base64.b64decode(event['data']).decode('utf-8'))
@@ -212,23 +212,20 @@ async def main(event, context):
             domain = parsed_url.netloc
         # 特定のドメインをチェックしてスキップ
             if domain in EXCLUDED_DOMAINS:
-                logging.INFO(f"スキップするドメインです。: {domain}")
+                logging.info(f"スキップするドメインです。: {domain}")
                 return
-            
         # コンテンツを取得
-        content = await fetch_content_from_url(url)
+        content = fetch_content_from_url(url)
         # コンテンツをパース
-        parsed_content = await parse_content(content)
+        parsed_content = parse_content(content)
         # 要約
-        summary = await summarize_content(parsed_content)
+        summary = summarize_content(parsed_content)
         # スコアを生成
-        score = await generate_score(summary)
+        score = generate_score(summary)
         # スプレッドシートに書き込み
         write_to_spreadsheet([title, url, summary, score])
         # ログを出力
-        logging.INFO(f"コンテンツの処理が完了: {url}")
+        logging.info(f"コンテンツの処理が完了: {url}")
     except Exception as e:
-        logging.ERROR(f"コンテンツの処理中にエラーが発生しました: {e}")
+        logging.error(f"コンテンツの処理中にエラーが発生しました: {e}")
         raise
-
-
