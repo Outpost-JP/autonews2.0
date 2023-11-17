@@ -18,19 +18,19 @@ async def main():
 # asyncioを使用してメイン関数を実行
 asyncio.run(main())
 '''
-
+'''
 #base64デコードテスト
 import os
 import base64
 
-'''
+
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 # Base64エンコードされたGoogleクレデンシャルをデコード
 creds = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
 print(creds)
-
+'''
 #base64エンコードテスト
-
+'''
 import base64
 
 # JSONファイルのパスを指定
@@ -180,7 +180,7 @@ paramater = '''
 }
 '''
 
-
+'''
 import openai
 from openai import OpenAI
 
@@ -199,3 +199,5 @@ completion = client.chat.completions.create(
 )
 
 print(completion.choices[0].message.content)
+
+'''

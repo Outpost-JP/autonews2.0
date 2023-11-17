@@ -1,22 +1,20 @@
-import os
-import json
-import base64
 import asyncio
-import aiohttp
-import openai
-from openai import OpenAI, AsyncOpenAI
-import traceback
-from html2text import html2text
-import gspread
-from backoff import on_exception, expo
-from datetime import datetime
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import create_extraction_chain
-from google.cloud import pubsub_v1
-from urllib.parse import urlparse
+import json
 import logging
+import os
+from datetime import datetime
+import traceback
+import aiohttp
+import base64
+from backoff import expo, on_exception
+from google.cloud import pubsub_v1
+from gspread import service_account_from_dict
+from html2text import html2text
+from openai import OpenAI, AsyncOpenAI
+from urllib.parse import urlparse
+import gspread
+import openai
 import time
-
 
 # ロギングの設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -25,8 +23,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID') 
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+#　スクレイピングできなさそうなところ、できないものを追加しておく。
+EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org']
 
-openai.api_key = OPENAI_API_KEY
+def init_openai():
+  return OpenAI(api_key=OPENAI_API_KEY)
 
 # Base64エンコードされたGoogleクレデンシャルをデコードし、gspreadクライアントを認証
 try:
@@ -39,15 +40,15 @@ except Exception as e:
     raise
 
 # OpenAIのクライアントを初期化
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-openai_timeout = 180
+
 # 非同期用のOpenAIクライアント
-async_client = AsyncOpenAI(timeout=openai_timeout)
+async_client = AsyncOpenAI()
 
 async def fetch_content_from_url(url):
     try:
-        logging.info(f"URLからコンテンツの取得を開始: {url}")
+        logging.INFO(f"URLからコンテンツの取得を開始: {url}")
 
         # ユーザーエージェントを設定
         headers = {
@@ -55,10 +56,10 @@ async def fetch_content_from_url(url):
         }
 
         async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=10) as response:
+            async with session.get(url, timeout=100) as response:
                 content = await response.text()
 
-            logging.info(f"URLからコンテンツの取得が成功: {url}")
+            logging.INFO(f"URLからコンテンツの取得が成功: {url}")
             return content
 
     except Exception as e:
@@ -185,9 +186,9 @@ async def generate_textual_content(content):
 def write_to_sheet_with_retry(row):
     time.sleep(1)  # 1秒スリープを追加
     try:
-        logging.info("Googleスプレッドシートへの書き込みを開始")
+        logging.INFO("Googleスプレッドシートへの書き込みを開始")
         sheet.insert_row(row, index=2)
-        logging.info("Googleスプレッドシートへの書き込みが成功")
+        logging.INFO("Googleスプレッドシートへの書き込みが成功")
     except Exception as e:
         logging.error(f"Googleスプレッドシートへの書き込み中にエラーが発生しました: {e}")
         raise
@@ -200,10 +201,10 @@ async def process_and_write_content(title, url):
 
     # 特定のドメインをチェックしてスキップ
     if any(excluded_domain in domain for excluded_domain in ['github.com', 'youtube.com', 'wikipedia.org']):
-        logging.info(f"処理をスキップ: {title} ({url}) は除外されたドメインに属しています。")
+        logging.INFO(f"処理をスキップ: {title} ({url}) は除外されたドメインに属しています。")
         return
 
-    logging.info(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
+    logging.INFO(f"コンテンツ処理が開始されました: タイトル={title}, URL={url}")
     html_content = await fetch_content_from_url(url)
     text_content = html2text(html_content)
     summary, scores, reason = await generate_textual_content(text_content)
