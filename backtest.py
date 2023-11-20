@@ -30,7 +30,7 @@ creds = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
 print(creds)
 '''
 #base64エンコードテスト
-'''
+
 import base64
 
 # JSONファイルのパスを指定
@@ -46,7 +46,7 @@ encoded_data = base64.b64encode(json_data)
 # エンコードされたデータを文字列として出力
 print(encoded_data.decode('utf-8'))
 '''
-'''
+
 import os
 from openai import OpenAI
 
