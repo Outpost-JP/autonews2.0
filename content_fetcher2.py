@@ -17,6 +17,11 @@ import time
 import traceback
 import requests
 from bs4 import BeautifulSoup
+from langchain.prompts import PromptTemplate
+from langchain.chat_models import ChatOpenAI
+from langchain.chains.summarize import load_summarize_chain
+from langchain.text_splitter import CharacterTextSplitter
+from langchain.docstore.document import Document
 
 
 #　こちらは新しく書き直してリファクタリングしたもの。
@@ -27,7 +32,29 @@ GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com']
 
+# プロンプトテンプレートの定義
+refine_first_template = """以下の文章は、長い記事をチャンクで分割したものの冒頭の文章です。それを留意し、次の文章の内容と結合することを留意したうえで以下の文章をテーマ毎にまとめて下さい。
+------
+{text}
+------
+"""
 
+refine_template = """下記の文章は、長い記事をチャンクで分割したものの一部です。また、「{existing_answer}」の内容はこれまでの内容の要約である。そして、「{text}」はそれらに続く文章です。それを留意し、次の文章の内容と結合することを留意したうえで以下の文章をテーマ毎にまとめて下さい。できる限り多くの情報を残しながら日本語で要約して出力してください。
+------
+{existing_answer}
+{text}
+------
+"""
+refine_first_prompt = PromptTemplate(input_variables=["text"],template=refine_first_template)
+refine_prompt = PromptTemplate(input_variables=["existing_answer", "text"],template=refine_template)
+
+# 要約チェーンの初期化
+refine_chain = load_summarize_chain(
+    ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k"),
+    chain_type="refine",
+    question_prompt=refine_first_prompt,
+    refine_prompt=refine_prompt
+)
 
 # gspread初期化
 def init_gspread():
@@ -40,7 +67,7 @@ def init_gspread():
   
 SHEET_CLIENT = init_gspread()
 
-# OpenAIの非同期クライアント初期化  
+# OpenAIの同期クライアント初期化  
 def init_openai():
   return OpenAI(api_key=OPENAI_API_KEY)
 
@@ -48,7 +75,7 @@ def init_openai():
 def openai_api_call(model, temperature, messages, max_tokens, response_format):
     client = init_openai() 
     try:
-        # OpenAI API呼び出しを行う非同期関数
+        # OpenAI API呼び出しを行う
         response = client.chat.completions.create(model=model, temperature=temperature, messages=messages, max_tokens=max_tokens, response_format=response_format)
         return response.choices[0].message.content  # 辞書型アクセスから属性アクセスへ変更
     except Exception as e:
@@ -59,23 +86,25 @@ def openai_api_call(model, temperature, messages, max_tokens, response_format):
 #　要約関数を書き出す。
 def summarize_content(content):
     try:
-        summary = openai_api_call(
-        "gpt-4-1106-preview",
-        0,
-        [
-            {"role": "system", "content": f'あなたは優秀な要約アシスタントです。"""{content}"""の内容をできる限り多くの情報を残しながら日本語で要約して出力してください。'},
-            {"role": "user", "content": content}
-        ],
-        2800,
-        # タイプ指定をサボらない
-        { "type": "text" }
+                # テキストを分割
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=5000, chunk_overlap=0, separator="."
         )
-        return summary
+        texts = text_splitter.split_text(content)
+
+        # 分割されたテキストをドキュメントに変換
+        docs = [Document(page_content=t) for t in texts]
+
+        # 要約チェーンを実行
+        result = refine_chain({"input_documents": docs}, return_only_outputs=True)
+
+        # 要約されたテキストを結合して返す
+        return result["output_text"]
     except Exception as e:
-        logging.info(f"要約時にエラーが発生しました。: {e}")
+        logging.error(f"要約処理中にエラーが発生しました: {e}")
         traceback.print_exc()
-        raise
-    
+        return ""
+
 # パラメーターを書き出す
 paramater = '''
 {
@@ -258,18 +287,35 @@ def main(event, context):
         if not parsed_content:
             logging.warning(f"コンテンツのパースに失敗しました。: {url}")
             return
-        # 要約
-        summary = summarize_content(parsed_content)
-        if not summary:
+        
+        # LangChainで初期要約
+        preliminary_summary = summarize_content(parsed_content)
+        if not preliminary_summary:
             logging.warning(f"要約に失敗しました。: {url}")
             return
+        
+        # OpenAI APIを使用してさらに整形
+        final_summary = openai_api_call(
+            "gpt-4-1106-preview",
+            0,
+            [
+                {"role": "system", "content": f'以下の文章を簡潔にまとめて下さい。: """{preliminary_summary}"""'},
+                {"role": "user", "content": preliminary_summary}
+            ],
+            2800,
+            { "type": "text" }
+        )
+        if not final_summary:
+            logging.warning(f"最終的な要約の整形に失敗しました。: {url}")
+            return
+
         # スコアを生成
-        score = generate_score(summary)
+        score = generate_score(final_summary)
         if not score:
             logging.warning(f"スコアの生成に失敗しました。: {url}")
             return
         # スプレッドシートに書き込み
-        write_to_spreadsheet([title, url, summary, score])
+        write_to_spreadsheet([title, url, final_summary, score])
         # ログを出力
         logging.info(f"コンテンツの処理が完了: {url}")
     except Exception as e:
