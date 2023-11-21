@@ -18,7 +18,7 @@ async def main():
 # asyncioを使用してメイン関数を実行
 asyncio.run(main())
 '''
-'''
+
 #base64デコードテスト
 import os
 import base64
@@ -28,13 +28,13 @@ GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')
 creds = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
 print(creds)
 '''
-
+'''
 #base64エンコードテスト
-
+'''
 import base64
 
 # JSONファイルのパスを指定
-file_path = 'path/to/credentials.json'
+file_path = 'C:/Users/araki/Downloads/div/ニュース用クレデンシャル.json'
 
 # ファイルを読み込み
 with open(file_path, 'rb') as file:
@@ -46,11 +46,11 @@ encoded_data = base64.b64encode(json_data)
 # エンコードされたデータを文字列として出力
 print(encoded_data.decode('utf-8'))
 
-'''
+
 import os
 from openai import OpenAI
-
-
+'''
+'''
 content = 
     try:
         tools = [
@@ -201,3 +201,49 @@ completion = client.chat.completions.create(
 print(completion.choices[0].message.content)
 
 '''
+
+#　要約関数を書き出す。
+def summarize_content(content):
+    try:
+                # テキストを分割
+        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
+            chunk_size=5000, chunk_overlap=0, separator="."
+        )
+        texts = text_splitter.split_text(content)
+
+        # 分割されたテキストをドキュメントに変換
+        docs = [Document(page_content=t) for t in texts]
+
+        # 要約チェーンを実行
+        result = refine_chain({"input_documents": docs}, return_only_outputs=True)
+
+        # 要約されたテキストを結合して返す
+        return result["output_text"]
+    except Exception as e:
+        logging.error(f"要約処理中にエラーが発生しました: {e}")
+        traceback.print_exc()
+        return ""
+    
+
+def summarize_content(content):
+    try:
+        # テキストを分割するためのスプリッターを設定
+        text_splitter = CharacterTextSplitter(
+            chunk_size=5000,  # 分割するチャンクのサイズ
+            chunk_overlap=0,  # チャンク間のオーバーラップ
+            separator="."     # 文章を分割するためのセパレータ
+        )
+        texts = text_splitter.split_text(content)
+
+        # 分割されたテキストをドキュメントに変換
+        docs = [Document(page_content=t) for t in texts]
+
+        # 要約チェーンを実行
+        result = refine_chain({"input_documents": docs}, return_only_outputs=True)
+
+        # 要約されたテキストを結合して返す
+        return result["output_text"]
+    except Exception as e:
+        logging.error(f"要約処理中にエラーが発生しました: {e}")
+        traceback.print_exc()
+        return ""

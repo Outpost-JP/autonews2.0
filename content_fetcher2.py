@@ -1,18 +1,14 @@
-import asyncio
 import json
 import logging
 import os
 from datetime import datetime
-import aiohttp
 import base64
 from backoff import expo, on_exception
 from google.cloud import pubsub_v1
-from gspread import service_account_from_dict  
 from html2text import html2text
 from openai import OpenAI
 from urllib.parse import urlparse
 import gspread
-import openai
 import time
 import traceback
 import requests
@@ -24,12 +20,13 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 
 
+
 #　こちらは新しく書き直してリファクタリングしたもの。
 
 # 定数
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')   
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENAI_api_key = os.getenv('OPENAI_API_KEY')
 EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com']
 
 # プロンプトテンプレートの定義
@@ -58,18 +55,29 @@ refine_chain = load_summarize_chain(
 
 # gspread初期化
 def init_gspread():
-  try:
-    creds = json.loads(base64.b64decode(GOOGLE_CREDENTIALS_BASE64))
-    return gspread.service_account_from_dict(creds).open_by_key(SPREADSHEET_ID).get_worksheet(1) 
-  except Exception as e:
-        logging.error(f"gspread初期化中にエラーが発生しました: {e}")
-        raise   
-  
+
+    # Base64デコード
+    creds_json = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
+
+    # JSONパース  
+    creds = json.loads(creds_json)
+
+    # gspread認証
+    gc = gspread.service_account_from_dict(creds)  
+
+    # スプレッドシートオープン
+    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+
+    # 2枚目のシート取得
+    worksheet = spreadsheet.get_worksheet(1)
+    return worksheet
+
+
 SHEET_CLIENT = init_gspread()
 
 # OpenAIの同期クライアント初期化  
 def init_openai():
-  return OpenAI(api_key=OPENAI_API_KEY)
+  return OpenAI(api_key=OPENAI_api_key)
 
 # OpenAI API呼び出し関数
 def openai_api_call(model, temperature, messages, max_tokens, response_format):
@@ -83,12 +91,13 @@ def openai_api_call(model, temperature, messages, max_tokens, response_format):
         raise
 
 
-#　要約関数を書き出す。
 def summarize_content(content):
     try:
-                # テキストを分割
-        text_splitter = CharacterTextSplitter.from_tiktoken_encoder(
-            chunk_size=5000, chunk_overlap=0, separator="."
+        # テキストを分割するためのスプリッターを設定
+        text_splitter = CharacterTextSplitter(
+            chunk_size=5000,  # 分割するチャンクのサイズ
+            chunk_overlap=0,  # チャンク間のオーバーラップ
+            separator="."     # 文章を分割するためのセパレータ
         )
         texts = text_splitter.split_text(content)
 
@@ -106,7 +115,7 @@ def summarize_content(content):
         return ""
 
 # パラメーターを書き出す
-paramater = '''
+parameter = '''
 {
     "properties": {
         "importance": {
@@ -165,7 +174,7 @@ def generate_score(summary):
             "gpt-3.5-turbo-1106",
             0,
             [
-                {"role": "system", "content": f'あなたは優秀な先進技術メディアのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、"""{summary}"""を10点満点でスコアリングして、JSON形式で返します。平均点は5点でスコアを付けるようにしてください。"""{paramater}"""のJSON形式で返してください。'},
+                {"role": "system", "content": f'あなたは優秀な先進技術メディアのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、"""{summary}"""を10点満点でスコアリングして、JSON形式で返します。平均点は5点でスコアを付けるようにしてください。"""{parameter}"""のJSON形式で返してください。'},
                 {"role": "user", "content": summary}
             ],
             4000,
