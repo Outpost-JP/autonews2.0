@@ -220,6 +220,9 @@ def parse_content(content):
         # 改行をスペースに置き換え
         parsed_text = ' '.join(text.split())
 
+        # パースされたテキストの文字数を出力
+        print(f"パースされたテキストの文字数: {len(parsed_text)}")
+
         return parsed_text
 
     except Exception as e:
