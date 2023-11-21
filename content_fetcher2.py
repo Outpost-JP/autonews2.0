@@ -16,6 +16,7 @@ import openai
 import time
 import traceback
 import requests
+from bs4 import BeautifulSoup
 
 
 #　こちらは新しく書き直してリファクタリングしたもの。
@@ -24,7 +25,7 @@ import requests
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')   
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org']
+EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com']
 
 
 
@@ -59,7 +60,7 @@ def openai_api_call(model, temperature, messages, max_tokens, response_format):
 def summarize_content(content):
     try:
         summary = openai_api_call(
-        "gpt-3.5-turbo-1106",
+        "gpt-4-1106-preview",
         0,
         [
             {"role": "system", "content": f'あなたは優秀な要約アシスタントです。"""{content}"""の内容をできる限り多くの情報を残しながら日本語で要約して出力してください。'},
@@ -171,7 +172,7 @@ def write_to_spreadsheet(row):
 
     except gspread.exceptions.GSpreadException as e:
         logging.error(f"致命的なエラー: {e}")
-    raise
+        raise
 
     
 # URLからコンテンツを取得する関数
@@ -197,11 +198,33 @@ def fetch_content_from_url(url):
 #　コンテンツをパースする関数 
 def parse_content(content):
     try:
-        text_content = html2text(content)
-        return text_content.replace('\n', ' ')
+        # HTMLコンテンツをBeautiful Soupでパース
+        soup = BeautifulSoup(content, 'html.parser')
+
+        # ヘッダーとフッターを削除（もし存在する場合）
+        header = soup.find('header')
+        if header:
+            header.decompose()
+
+        footer = soup.find('footer')
+        if footer:
+            footer.decompose()
+
+        # JavaScriptとCSSを削除
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+        # HTMLタグを削除してテキストのみを取得
+        text = soup.get_text()
+
+        # 改行をスペースに置き換え
+        parsed_text = ' '.join(text.split())
+
+        return parsed_text
+
     except Exception as e:
         logging.warning(f"コンテンツのパース中にエラーが発生しました: {e}")
-        raise
+        return ""
 
 # メイン関数
 def main(event, context):
