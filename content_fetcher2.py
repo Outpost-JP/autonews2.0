@@ -177,7 +177,10 @@ def generate_score(summary):
             4000,
             { "type":"json_object" }
             )
-        return score
+        score_json = json.loads(score)
+        # 応答を整形して返す
+        formatted_score = json.dumps(score_json, indent=2, ensure_ascii=False)
+        return formatted_score
     except Exception as e:
         logging.warning(f"スコア測定時にエラーが発生しました。: {e}")
         traceback.print_exc()
