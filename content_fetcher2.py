@@ -44,10 +44,10 @@ refine_template = """下記の文章は、長い記事をチャンクで分割�
 """
 refine_first_prompt = PromptTemplate(input_variables=["text"],template=refine_first_template)
 refine_prompt = PromptTemplate(input_variables=["existing_answer", "text"],template=refine_template)
-
+llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k")
 # 要約チェーンの初期化
 refine_chain = load_summarize_chain(
-    ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k"),
+    llm=llm,
     chain_type="refine",
     question_prompt=refine_first_prompt,
     refine_prompt=refine_prompt
@@ -95,17 +95,14 @@ def summarize_content(content):
     try:
         # テキストを分割するためのスプリッターを設定
         text_splitter = CharacterTextSplitter(
-            chunk_size=5000,  # 分割するチャンクのサイズ
-            chunk_overlap=0,  # チャンク間のオーバーラップ
-            separator="."     # 文章を分割するためのセパレータ
+            chunk_size=3000,  # 分割するチャンクのサイズ
+            chunk_overlap=100,  # チャンク間のオーバーラップ
+            separator="\n"    # 文章を分割するためのセパレータ
         )
-        texts = text_splitter.split_text(content)
-
-        # 分割されたテキストをドキュメントに変換
-        docs = [Document(page_content=t) for t in texts]
+        texts = text_splitter.create_documents([content])
 
         # 要約チェーンを実行
-        result = refine_chain({"input_documents": docs}, return_only_outputs=True)
+        result = refine_chain({"input_documents": texts}, return_only_outputs=True)
 
         # 要約されたテキストを結合して返す
         return result["output_text"]
