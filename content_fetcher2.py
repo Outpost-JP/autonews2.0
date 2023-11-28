@@ -27,7 +27,7 @@ from langchain.docstore.document import Document
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')   
 OPENAI_api_key = os.getenv('OPENAI_API_KEY')
-EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com']
+EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com', 'www.youtube.com']
 
 # プロンプトテンプレートの定義
 refine_first_template = """以下の文章は、長い記事をチャンクで分割したものの冒頭の文章です。それを留意し、次の文章の内容と結合することを留意したうえで以下の文章をテーマ毎にまとめて下さい。
