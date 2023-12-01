@@ -172,7 +172,7 @@ def init_gspread():
 SHEET_CLIENT = init_gspread()
 
 # OpenAI API呼び出し関数
-async def openai_api_call(model, temperature, messages, max_tokens, response_format):
+def openai_api_call(model, temperature, messages, max_tokens, response_format):
     client = OpenAI(api_key=OPENAI_api_key)  # 非同期クライアントのインスタンス化
     try:
         # OpenAI API呼び出しを行う
@@ -312,7 +312,6 @@ def heavy_task(article_title, article_url):
     except Exception as e:
         logging.error(f"{article_url} の処理中にエラーが発生: {e}")
         traceback.print_exc()
-    pass
 
 def process_inoreader_update(request):
     request_json = request.get_json()
