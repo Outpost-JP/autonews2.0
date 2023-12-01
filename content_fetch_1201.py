@@ -316,16 +316,17 @@ def heavy_task(article_title, article_url):
 def process_inoreader_update(request):
     request_json = request.get_json()
 
-    if request_json and 'title' in request_json and 'url' in request_json:
-        article_title = escape(request_json['title'])
-        article_url = escape(request_json['url'])
+    if request_json and 'items' in request_json:
+        for item in request_json['items']:
+            article_title = escape(item.get('title', ''))
+            article_href = escape(item['canonical'][0]['href']) if 'canonical' in item and item['canonical'] else ''
 
-        # 重い処理を非同期で実行するために別のスレッドを起動
-        thread = threading.Thread(target=heavy_task, args=(article_title, article_url))
-        thread.start()
+            if article_title and article_href:
+                # 重い処理を非同期で実行するために別のスレッドを起動
+                thread = threading.Thread(target=heavy_task, args=(article_title, article_href))
+                thread.start()
 
         # メインスレッドでは即座に応答を返す
         return '記事の更新を受け取りました'
-
     else:
         return '適切なデータがリクエストに含まれていません'
