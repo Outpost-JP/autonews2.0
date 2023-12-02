@@ -1,4 +1,8 @@
-from markupsafe import escape
+# テスト用
+# import functions_framework
+import threading
+import openai
+import flaskfrom markupsafe import escape
 from openai import OpenAI
 import asyncio
 import requests
