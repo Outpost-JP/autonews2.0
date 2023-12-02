@@ -8,7 +8,6 @@ import logging
 import json
 import os
 import re
-from urllib.parse import urlparse
 import time
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
@@ -27,7 +26,7 @@ def summarize_content(content):
     try:
         # テキストを分割するためのスプリッターを設定
         text_splitter = CharacterTextSplitter(
-            chunk_size=3000,  # 分割するチャンクのサイズ
+            chunk_size=5000,  # 分割するチャンクのサイズ
             chunk_overlap=100,  # チャンク間のオーバーラップ
             separator="\n"    # 文章を分割するためのセパレータ
         )
@@ -123,7 +122,6 @@ def generate_score(summary):
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')   
 OPENAI_api_key = os.getenv('OPENAI_API_KEY')
-EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com', 'www.youtube.com']
 
 # プロンプトテンプレートの定義
 refine_first_template = """以下の文章は、長い記事をチャンクで分割したものの冒頭の文章です。それを留意し、次の文章の内容と結合することを留意したうえで以下の文章をテーマ毎にまとめて下さい。
@@ -200,7 +198,7 @@ def fetch_content_from_url(url):
 
     except Exception as e:
         logging.warning(f"URLからのコンテンツ取得中にエラーが発生しました: {e}")
-        raise
+        return None
 
 #　コンテンツをパースする関数 
 def parse_content(content):
@@ -234,7 +232,7 @@ def parse_content(content):
 
     except Exception as e:
         logging.warning(f"コンテンツのパース中にエラーが発生しました: {e}")
-        return ""
+        return None
     
     # スプレッドシートに書き出す
 @on_exception(expo, gspread.exceptions.APIError, max_tries=3)
@@ -256,25 +254,25 @@ def write_to_spreadsheet(row):
 
     except gspread.exceptions.APIError as e:
         logging.warning(f"一時的なエラー、リトライ可能: {e}")
-        raise 
+        raise e
 
     except gspread.exceptions.GSpreadException as e:
         logging.error(f"致命的なエラー: {e}")
-        raise
+        raise e
 
 
 
 # メインのタスクの部分
 def heavy_task(article_title, article_url):
     try:
-        # URLからコンテンツを取得し、パースする
+        # URLからコンテンツを取得
         content = fetch_content_from_url(article_url)
-        if not content:
+        if content is None:
             logging.warning(f"コンテンツが見つからない: {article_url}")
             return
 
         parsed_content = parse_content(content)
-        if not parsed_content:
+        if parsed_content is None:
             logging.warning(f"コンテンツのパースに失敗: {article_url}")
             return
 
