@@ -1,6 +1,4 @@
-import threading
-from flask import escape
-import openai
+from markupsafe import escape
 from openai import OpenAI
 import asyncio
 import requests
@@ -8,6 +6,7 @@ import logging
 import json
 import os
 import re
+from urllib.parse import urlparse
 import time
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
@@ -40,7 +39,7 @@ def summarize_content(content):
     except Exception as e:
         logging.error(f"要約処理中にエラーが発生しました: {e}")
         traceback.print_exc()
-        return ""
+        return None
 
 # パラメーターを書き出す
 parameter = '''
@@ -122,6 +121,7 @@ def generate_score(summary):
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
 GOOGLE_CREDENTIALS_BASE64 = os.getenv('CREDENTIALS_BASE64')   
 OPENAI_api_key = os.getenv('OPENAI_API_KEY')
+EXCLUDED_DOMAINS = ['github.com', 'youtube.com', 'wikipedia.org', 'twitter.com', 'www.youtube.com']
 
 # プロンプトテンプレートの定義
 refine_first_template = """以下の文章は、長い記事をチャンクで分割したものの冒頭の文章です。それを留意し、次の文章の内容と結合することを留意したうえで以下の文章をテーマ毎にまとめて下さい。
@@ -254,31 +254,31 @@ def write_to_spreadsheet(row):
 
     except gspread.exceptions.APIError as e:
         logging.warning(f"一時的なエラー、リトライ可能: {e}")
-        raise e
+        raise 
 
     except gspread.exceptions.GSpreadException as e:
         logging.error(f"致命的なエラー: {e}")
-        raise e
+        raise
 
 
 
 # メインのタスクの部分
 def heavy_task(article_title, article_url):
     try:
-        # URLからコンテンツを取得
+        # URLからコンテンツを取得し、パースする
         content = fetch_content_from_url(article_url)
         if content is None:
             logging.warning(f"コンテンツが見つからない: {article_url}")
             return
 
         parsed_content = parse_content(content)
-        if parsed_content is None:
+        if parse_content is None:
             logging.warning(f"コンテンツのパースに失敗: {article_url}")
             return
 
         # 初期要約を生成
         preliminary_summary = summarize_content(parsed_content)
-        if not preliminary_summary:
+        if preliminary_summary is None:
             logging.warning(f"コンテンツの要約に失敗: {article_url}")
             return
 
@@ -287,7 +287,7 @@ def heavy_task(article_title, article_url):
             "gpt-4-1106-preview",
             0,
             [
-                {"role": "system", "content": f"以下のテキストを要約してください: {preliminary_summary}"},
+                {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ。日本語で要約してください。"},
                 {"role": "user", "content": preliminary_summary}
             ],
             4000,
@@ -295,13 +295,13 @@ def heavy_task(article_title, article_url):
         )
         if not final_summary:
             logging.warning(f"要約の洗練に失敗: {article_url}")
-            return
+            return None
 
         # 要約のスコアを生成
         score = generate_score(final_summary)
         if not score:
             logging.warning(f"スコアの生成に失敗: {article_url}")
-            return
+            return ""
 
         # スプレッドシートに書き込む
         write_to_spreadsheet([article_title, article_url, final_summary, score])
@@ -311,6 +311,8 @@ def heavy_task(article_title, article_url):
         logging.error(f"{article_url} の処理中にエラーが発生: {e}")
         traceback.print_exc()
 
+# gcfにデプロイする時以外は消すこと
+# @functions_framework.http
 def process_inoreader_update(request):
     request_json = request.get_json()
 
@@ -318,6 +320,12 @@ def process_inoreader_update(request):
         for item in request_json['items']:
             article_title = escape(item.get('title', ''))
             article_href = escape(item['canonical'][0]['href']) if 'canonical' in item and item['canonical'] else ''
+
+
+            # news.google.comを含むURLをスキップする
+            if 'news.google.com' in article_href:
+                logging.info(f"news.google.comのURLはスキップされます: {article_href}")
+                continue
 
             if article_title and article_href:
                 # 重い処理を非同期で実行するために別のスレッドを起動
