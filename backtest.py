@@ -34,7 +34,7 @@ print(creds)
 import base64
 
 # JSONファイルのパスを指定
-file_path = 'C:/Users/araki/Downloads/div/ニュース用クレデンシャル.json'
+file_path = ''
 
 # ファイルを読み込み
 with open(file_path, 'rb') as file:
