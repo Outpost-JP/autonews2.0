@@ -2,13 +2,10 @@ import functions_framework
 import threading
 import flask
 from markupsafe import escape
-import asyncio
 import requests
 import json
 import os
 import re
-from urllib.parse import urlparse
-import time
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
 import gspread
@@ -22,7 +19,6 @@ from langchain.docstore.document import Document
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime
-import csv  # csvの重複インポートを削除
 import base64  # base64の重複インポートを削除
 import logging  # loggingの重複インポートを削除
 from openai import OpenAI
