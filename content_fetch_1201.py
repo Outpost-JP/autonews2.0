@@ -85,6 +85,12 @@ def init_gspread():
 
     # gspread認証
     gc = gspread.service_account_from_dict(creds)  
+    '''ここを絶対に見逃すなこれまでの奴も書き換えろ！！！！！！！！！！！！！
+    ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+    ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+    '''
+    # タイムアウトを設定（ここでは30秒）
+    gc.session.timeout = 30
 
     # スプレッドシートオープン
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
