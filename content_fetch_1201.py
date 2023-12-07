@@ -99,7 +99,7 @@ def init_gspread():
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 
     # 2枚目のシート取得
-    worksheet = spreadsheet.get_worksheet(0)
+    worksheet = spreadsheet.get_worksheet(3)
     return worksheet
 
 
