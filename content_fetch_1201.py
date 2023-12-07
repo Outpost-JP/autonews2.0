@@ -24,6 +24,8 @@ from langchain.chains.summarize import load_summarize_chain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 
 def summarize_content(content):
@@ -192,40 +194,50 @@ def select_random_persona():
 def generate_opinion(content):
     full_persona, persona_name = select_random_persona()
     opinion = openai_api_call(
-        "gpt-4",
+        "gpt-3.5-turbo-1106",
+        0.6,
+        [
+            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
+            {"role": "user", "content": content}
+            
+        ],
+        2000,
+        {"type": "text"}
+    )
+    opinion_with_name = f'{persona_name}: {opinion}'
+    return opinion_with_name
+
+# 意見を生成する関数(2)
+def generate_opinion2(content):
+    full_persona, persona_name = select_random_persona()
+    opinion = openai_api_call(
+        "gpt-3.5-turbo-1106",
         0.6,
         [
             {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
             {"role": "user", "content": content}
         ],
+        2000,
+        {"type": "text"}
     )
-    opinion_with_name = f'{persona_name}: {opinion}'
-    # ここに意見者の名前を入れるスクリプトを追加したい。
-    return opinion_with_name
-
-# 意見を生成する関数(2)
-def generate_opinion2(content):
-    opnion2 = openai_api_call(
-        "gpt-4",
-        0.6,
-        [
-            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で意見を生成してください。"},
-            {"role": "user", "content": content}
-        ],
-    )
-    return opnion2
+    opinion_with_name2 = f'{persona_name}: {opinion}'
+    return opinion_with_name2
 
 # 意見を生成する関数(3)
 def generate_opinion3(content):
-    opnion3 = openai_api_call(
-        "gpt-4",
+    full_persona, persona_name = select_random_persona()
+    opinion = openai_api_call(
+        "gpt-3.5-turbo-1106",
         0.6,
         [
-            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で意見を生成してください。"},
+            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
             {"role": "user", "content": content}
         ],
+        2000,
+        {"type": "text"}
     )
-    return opnion3
+    opinion_with_name3 = f'{persona_name}: {opinion}'
+    return opinion_with_name3
 
 
 
@@ -304,15 +316,26 @@ def heavy_task(article_title, article_url):
         if not final_summary:
             logging.warning(f"要約の洗練に失敗: {article_url}")
             return None
+        
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            future_to_opinion = {
+                executor.submit(generate_opinion, final_summary): 'opinion1',
+                executor.submit(generate_opinion2, final_summary): 'opinion2',
+                executor.submit(generate_opinion3, final_summary): 'opinion3',
+        }
+        opinions = []
+        for future in as_completed(future_to_opinion):
+            try:
+                opinions.append(future.result())
+            except Exception as e:
+                logging.error(f"{article_url} の意見生成中にエラーが発生: {e}")
 
         
-        # 意見を生成
-        opinion = generate_opinion(final_summary)
-        opinion2 = generate_opinion2(final_summary)
-        opinion3 = generate_opinion3(final_summary)
+        # スプレッドシートに書き込む準備
+        spreadsheet_content = [article_title, article_url, final_summary] + opinions
 
         # スプレッドシートに書き込む
-        write_to_spreadsheet([article_title, article_url, final_summary, opinion, opinion2, opinion3])
+        write_to_spreadsheet(spreadsheet_content)
         logging.info(f"処理完了: {article_url}")
 
     except Exception as e:
