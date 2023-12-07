@@ -1,8 +1,8 @@
-# テスト用
-# import functions_framework
+import functions_framework
 import threading
 import openai
-import flaskfrom markupsafe import escape
+import flask
+from markupsafe import escape
 from openai import OpenAI
 import asyncio
 import requests
@@ -23,6 +23,7 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains.summarize import load_summarize_chain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
+import random
 
 
 def summarize_content(content):
@@ -44,82 +45,6 @@ def summarize_content(content):
         logging.error(f"要約処理中にエラーが発生しました: {e}")
         traceback.print_exc()
         return None
-
-# パラメーターを書き出す
-parameter = '''
-{
-    "properties": {
-        "importance": {
-            "type": "integer",
-            "description": "How impactful the topic of the article is. Scale: 0-10."
-        },
-        "timeliness": {
-            "type": "integer",
-            "description": "How relevant the information is to current events or trends. Scale: 0-10."
-        },
-        "objectivity": {
-            "type": "integer",
-            "description": "Whether the information is presented without bias or subjective opinion. Scale: 0-10."
-        },
-        "originality": {
-            "type": "integer",
-            "description": "The novelty or uniqueness of the content. Scale: 0-10."
-        },
-        "target_audience": {
-            "type": "integer",
-            "description": "How well the content is adjusted for a specific audience. Scale: 0-10."
-        },
-        "diversity": {
-            "type": "integer",
-            "description": "Reflection of different perspectives or cultures. Scale: 0-10."
-        },
-        "relation_to_advertising": {
-            "type": "integer",
-            "description": "If the content is biased due to advertising. Scale: 0-10."
-        },
-        "security_issues": {
-            "type": "integer",
-            "description": "Potential for raising security concerns. Scale: 0-10."
-        },
-        "social_responsibility": {
-            "type": "integer",
-            "description": "How socially responsible the content presentation is. Scale: 0-10."
-        },
-        "social_significance": {
-            "type": "integer",
-            "description": "The social impact of the content. Scale: 0-10."
-        }
-        "reason": {
-        "type": "string",
-        "description": "the basis for each numerical score. Output in 1-sentence Japanese with respect to all parameters"
-        }
-    },
-    "required": ["importance", "timeliness", "objectivity", "originality", "target_audience", "diversity", "relation_to_advertising", "security_issues", "social_responsibility", "social_significance", "reason"]
-}
-'''
-
-# スコアを書き出す
-def generate_score(summary):
-    try:
-        score = openai_api_call(
-            "gpt-3.5-turbo-1106",
-            0,
-            [
-                {"role": "system", "content": f'あなたは優秀な先進技術メディアのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、"""{summary}"""を10点満点でスコアリングして、JSON形式で返します。平均点は5点でスコアを付けるようにしてください。"""{parameter}"""のJSON形式で返してください。'},
-                {"role": "user", "content": summary}
-            ],
-            4000,
-            { "type":"json_object" }
-            )
-        score_json = json.loads(score)
-        # 応答を整形して返す
-        formatted_score = json.dumps(score_json, indent=2, ensure_ascii=False)
-        return formatted_score
-    except Exception as e:
-        logging.warning(f"スコア測定時にエラーが発生しました。: {e}")
-        traceback.print_exc()
-        return ""
-
 
 # 定数
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
@@ -167,7 +92,7 @@ def init_gspread():
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 
     # 2枚目のシート取得
-    worksheet = spreadsheet.get_worksheet(1)
+    worksheet = spreadsheet.get_worksheet(0)
     return worksheet
 
 
@@ -237,22 +162,82 @@ def parse_content(content):
     except Exception as e:
         logging.warning(f"コンテンツのパース中にエラーが発生しました: {e}")
         return None
-    
+
+# ランダムペルソナを選択する関数
+def select_random_persona():
+    # 定義されたペルソナの辞書
+    personas = {
+        1: "佐藤ユウキ - 職業: 大学院生、AI研究者, 性格: 好奇心旺盛、論理的、やや内向的, 思想: テクノロジーの民主化を信じており、オープンソース運動を支持, 宗教: 特定の宗教には属していないが、宇宙論的パンティズムに共感を覚える, 人種/民族: 日本人, バックグラウンド: 東京の大学でコンピュータサイエンスを専攻し、AIに魅了された。特に機械学習と人間の認知の関連性に興味があり、学際的な研究を志向している。",
+        2: "Amina Hussein - 職業: ソフトウェアエンジニア、AIスタートアップの共同創業者, 性格: 外向的、決断力があり、リーダーシップに富む, 思想: 社会起業家精神を持ち、技術を利用して途上国の問題を解決したいと考えている, 宗教: イスラム教徒, 人種/民族: ソマリア系アメリカ人, バックグラウンド: アメリカで育ち、シリコンバレーの名門大学でコンピュータサイエンスを学んだ。彼女のスタートアップは、AIを使って教育と健康の分野で革新をもたらすことを目指している。",
+        3: "Carlos García - AI倫理学者、大学教授",
+        4: "Priya Singh - データサイエンティスト、医療AIの専門家",
+        5: "David Okafor - AIアプリケーション開発者、フリーランサー"
+    }
+
+    # 1から5までのランダムな整数を生成
+    random_number = random.randint(1, 5)
+
+    # 生成された整数に対応するペルソナを選択
+    selected_persona = personas[random_number]
+    # ペルソナの名前を抽出
+    persona_name = selected_persona.split(" - ")[0]
+    return selected_persona, persona_name
+
+# 意見を生成する関数 
+def generate_opinion(content):
+    full_persona, persona_name = select_random_persona()
+    opinion = openai_api_call(
+        "gpt-4",
+        0.6,
+        [
+            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
+            {"role": "user", "content": content}
+        ],
+    )
+    opinion_with_name = f'{persona_name}: {opinion}'
+    # ここに意見者の名前を入れるスクリプトを追加したい。
+    return opinion_with_name
+
+# 意見を生成する関数(2)
+def generate_opinion2(content):
+    opnion2 = openai_api_call(
+        "gpt-4",
+        0.6,
+        [
+            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で意見を生成してください。"},
+            {"role": "user", "content": content}
+        ],
+    )
+    return opnion2
+
+# 意見を生成する関数(3)
+def generate_opinion3(content):
+    opnion3 = openai_api_call(
+        "gpt-4",
+        0.6,
+        [
+            {"role": "system", "content": "あなたは優秀な意見生成アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で意見を生成してください。"},
+            {"role": "user", "content": content}
+        ],
+    )
+    return opnion3
+
+
+
     # スプレッドシートに書き出す
-@on_exception(expo, gspread.exceptions.APIError, max_tries=3)
-@on_exception(expo, gspread.exceptions.GSpreadException, max_tries=3)
+@on_exception(expo(base=4), gspread.exceptions.APIError, max_tries=2)
+@on_exception(expo(base=4), gspread.exceptions.GSpreadException, max_tries=2)
 def write_to_spreadsheet(row):
     if not SHEET_CLIENT:
         logging.error("スプレッドシートのクライアントが初期化されていません。")
         return False
-    time.sleep(1)  # 1秒スリープを追加
     try:
         logging.info(f"スプレッドシートへの書き込みを開始: {row}")
         # スプレッドシートの初期化
         worksheet = SHEET_CLIENT
 
-        # スプレッドシートに書き込み
-        worksheet.append_row(row)
+        # スプレッドシートに指定行に挿入
+        worksheet.insert_row(row, 2)  # A2からD2に行を挿入
 
         logging.info(f"スプレッドシートへの書き込みが成功: {row}")
 
@@ -276,47 +261,60 @@ def heavy_task(article_title, article_url):
             return
 
         parsed_content = parse_content(content)
-        if parse_content is None:
+        if parsed_content is None:
             logging.warning(f"コンテンツのパースに失敗: {article_url}")
             return
 
-        # 初期要約を生成
-        preliminary_summary = summarize_content(parsed_content)
-        if preliminary_summary is None:
-            logging.warning(f"コンテンツの要約に失敗: {article_url}")
-            return
+        # parsed_contentが10000文字以下なら直接OpenAIに渡す
+        if len(parsed_content) <= 10000:
+            final_summary = openai_api_call(
+                "gpt-4-1106-preview",
+                0,
+                [
+                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。"},
+                    {"role": "user", "content": parsed_content}
+                ],
+                4000,
+                {"type": "text"}
+            )
+        else:
+            # 初期要約を生成
+            preliminary_summary = summarize_content(parsed_content)
+            if preliminary_summary is None:
+                logging.warning(f"コンテンツの要約に失敗: {article_url}")
+                return
 
-        # OpenAIを使用してさらに要約を洗練
-        final_summary = openai_api_call(
-            "gpt-4-1106-preview",
-            0,
-            [
-                {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ。日本語で要約してください。"},
-                {"role": "user", "content": preliminary_summary}
-            ],
-            4000,
-            {"type": "text"}
-        )
+            # OpenAIを使用してさらに要約を洗練
+            final_summary = openai_api_call(
+                "gpt-4-1106-preview",
+                0,
+                [
+                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。"},
+                    {"role": "user", "content": preliminary_summary}
+                ],
+                4000,
+                {"type": "text"}
+            )
+
         if not final_summary:
             logging.warning(f"要約の洗練に失敗: {article_url}")
             return None
 
-        # 要約のスコアを生成
-        score = generate_score(final_summary)
-        if not score:
-            logging.warning(f"スコアの生成に失敗: {article_url}")
-            return ""
+        
+        # 意見を生成
+        opinion = generate_opinion(final_summary)
+        opinion2 = generate_opinion2(final_summary)
+        opinion3 = generate_opinion3(final_summary)
 
         # スプレッドシートに書き込む
-        write_to_spreadsheet([article_title, article_url, final_summary, score])
+        write_to_spreadsheet([article_title, article_url, final_summary, opinion, opinion2, opinion3])
         logging.info(f"処理完了: {article_url}")
 
     except Exception as e:
         logging.error(f"{article_url} の処理中にエラーが発生: {e}")
         traceback.print_exc()
 
-# gcfにデプロイする時以外は消すこと
-# @functions_framework.http
+@functions_framework.http
 def process_inoreader_update(request):
     request_json = request.get_json()
 
@@ -335,8 +333,10 @@ def process_inoreader_update(request):
                 # 重い処理を非同期で実行するために別のスレッドを起動
                 thread = threading.Thread(target=heavy_task, args=(article_title, article_href))
                 thread.start()
-
         # メインスレッドでは即座に応答を返す
-        return '記事の更新を受け取りました'
+        return '記事の更新を受け取りました', 200
     else:
-        return '適切なデータがリクエストに含まれていません'
+        return '適切なデータがリクエストに含まれていません', 400
+        
+         
+
