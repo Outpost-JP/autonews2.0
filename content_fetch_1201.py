@@ -21,9 +21,6 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from googleapiclient.http import MediaIoBaseUpload
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
 import datetime
 import csv  # csvの重複インポートを削除
 import base64  # base64の重複インポートを削除
@@ -215,84 +212,25 @@ def generate_opinion(content):
         logging.error(f"意見生成中にエラーが発生: {e}")
         return f"エラーが発生しました: {e}"
 
-# 共通のサービスアカウント認証情報を読み込む関数
-def get_service_account_credentials():
-    # Base64デコード
-    creds_json = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
-    # JSONパース  
-    creds = json.loads(creds_json)
-    return creds
-
-# Google Drive APIクライアント初期化関数
-def init_drive_service():
-    creds = get_service_account_credentials()
-    # 必要なスコープを指定して、サービスアカウントの認証情報を作成
-    service_account_info = creds
-    scopes = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
-    credentials = Credentials.from_service_account_info(service_account_info, scopes=scopes)
-    # Drive APIクライアントを初期化
-    service = build('drive', 'v3', credentials=credentials)
-    return service
-
-# Google Driveへファイルをアップロードする関数
-def upload_file_to_drive(service, file_path, file_name):
-    file_metadata = {'name': file_name}
-    media = MediaIoBaseUpload(io.BytesIO(open(file_path, "rb").read()), mimetype='text/csv')
-    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-    # ファイルIDを出力 (後で使いたい場合)
-    logging.info(f'Uploaded file ID: {file.get("id")}')
-
-
     # スプレッドシートに書き出す
-@on_exception(expo(base=4), gspread.exceptions.APIError, max_tries=2)
-@on_exception(expo(base=4), gspread.exceptions.GSpreadException, max_tries=2)
-def write_to_spreadsheet(row, retry_failed=False):
+@on_exception(expo, gspread.exceptions.APIError, max_tries=2, base=4)
+@on_exception(expo, gspread.exceptions.GSpreadException, max_tries=2, base=4)
+def write_to_spreadsheet(row):
     if not SHEET_CLIENT:
         logging.error("スプレッドシートのクライアントが初期化されていません。")
         return False
+    
     try:
         logging.info(f"スプレッドシートへの書き込みを開始: {row}")
-        # スプレッドシートの初期化
         worksheet = SHEET_CLIENT
-
-        # スプレッドシートに指定行に挿入
         worksheet.insert_row(row, 2)  # A2からD2に行を挿入
-
         logging.info(f"スプレッドシートへの書き込みが成功: {row}")
-
     except gspread.exceptions.APIError as e:
-        logging.warning(f"一時的なエラー、リトライ可能: {e}")
-        if not retry_failed:
-            write_to_spreadsheet(row, retry_failed=True)
-        else:
-            write_to_csv(row)
-        raise 
-
-    except gspread.exceptions.GSpreadException as e:
-        logging.error(f"致命的なエラー: {e}")
+        logging.error(f"スプレッドシートへの書き込み中にAPIエラーが発生: {e}")
         raise
-
-# Google Drive APIクライアント初期化
-DRIVE_SERVICE = init_drive_service()
-
-def write_to_csv(row):
-    # 現在の時刻でファイル名を生成
-    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"backup_{timestamp}.csv"
-    file_path = f'/tmp/{filename}'  # Cloud Function の一時ディレクトリ
-
-    # CSVへの書き込み
-    with open(file_path, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(row)
-    
-    # Google Driveにアップロード
-    upload_file_to_drive(DRIVE_SERVICE, file_path, filename)
-    # 一時ファイルをクリーンアップ（オプション）
-    os.remove(file_path)
-
-
+    except gspread.exceptions.GSpreadException as e:
+        logging.error(f"スプレッドシートへの書き込み中に致命的なエラーが発生: {e}")
+        raise
 
 # メインのタスクの部分
 def heavy_task(article_title, article_url):
@@ -320,6 +258,9 @@ def heavy_task(article_title, article_url):
                 4000,
                 {"type": "text"}
             )
+            if not final_summary:
+                logging.warning(f"要約の洗練に失敗: {article_url}")
+                return None
         else:
             # 初期要約を生成
             preliminary_summary = summarize_content(parsed_content)
@@ -332,16 +273,36 @@ def heavy_task(article_title, article_url):
                 "gpt-4-1106-preview",
                 0,
                 [
-                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。"},
+                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。テーマごとに分割してリスト形式にすることは行わないでください。"},
                     {"role": "user", "content": preliminary_summary}
                 ],
                 4000,
                 {"type": "text"}
             )
 
-        if not final_summary:
-            logging.warning(f"要約の洗練に失敗: {article_url}")
+            if not final_summary:
+                logging.warning(f"要約の洗練に失敗: {article_url}")
             return None
+        
+        # リード文生成のためのOpenAI API呼び出し
+        try:
+            lead_sentence = openai_api_call(
+            "gpt-4",
+            0,
+            [
+                {"role": "system", "content": "あなたは優秀なライターです。この要約のリード文（導入部）を作成してください。"},
+                {"role": "user", "content": final_summary}
+            ],
+            500,  # リード文の最大トークン数を適宜設定
+            {"type": "text"}
+            )
+            if not lead_sentence:
+                logging.warning(f"リード文の生成に失敗: {article_url}")
+                lead_sentence = "リード文の生成に失敗しました。"
+        except Exception as e:
+            logging.error(f"リード文生成中にエラーが発生: {e}")
+            lead_sentence = "リード文の生成中にエラーが発生しました。"
+        
         
         # ThreadPoolExecutorを使用して意見を並列生成
         with ThreadPoolExecutor(max_workers=3) as executor:
@@ -360,7 +321,7 @@ def heavy_task(article_title, article_url):
 
         
         # スプレッドシートに書き込む準備
-        spreadsheet_content = [article_title, article_url, final_summary] + opinions
+        spreadsheet_content = [article_title, article_url, final_summary, lead_sentence] + opinions
 
         # スプレッドシートに書き込む
         write_to_spreadsheet(spreadsheet_content)
