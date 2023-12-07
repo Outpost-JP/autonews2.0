@@ -5,7 +5,6 @@ from markupsafe import escape
 import requests
 import json
 import os
-import re
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
 import gspread
@@ -18,7 +17,6 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import datetime
 import base64  # base64の重複インポートを削除
 import logging  # loggingの重複インポートを削除
 from openai import OpenAI
