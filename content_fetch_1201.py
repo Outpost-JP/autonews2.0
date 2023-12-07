@@ -26,7 +26,7 @@ import csv  # csvの重複インポートを削除
 import base64  # base64の重複インポートを削除
 import logging  # loggingの重複インポートを削除
 from openai import OpenAI
-import io
+
 
 
 
