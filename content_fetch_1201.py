@@ -1,12 +1,9 @@
 import functions_framework
 import threading
-import openai
 import flask
 from markupsafe import escape
-from openai import OpenAI
 import asyncio
 import requests
-import logging
 import json
 import os
 import re
@@ -15,7 +12,6 @@ import time
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
 import gspread
-import base64
 import traceback
 import langchain
 from langchain.prompts import PromptTemplate
@@ -25,6 +21,15 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.discovery import build
+from google.oauth2.service_account import Credentials
+import datetime
+import csv  # csvの重複インポートを削除
+import base64  # base64の重複インポートを削除
+import logging  # loggingの重複インポートを削除
+from openai import OpenAI
+import io
 
 
 
@@ -190,61 +195,59 @@ def select_random_persona():
     persona_name = selected_persona.split(" - ")[0]
     return selected_persona, persona_name
 
-# 意見を生成する関数 
+# 意見を生成する関数 (統合版)
 def generate_opinion(content):
-    full_persona, persona_name = select_random_persona()
-    opinion = openai_api_call(
-        "gpt-3.5-turbo-1106",
-        0.6,
-        [
-            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
-            {"role": "user", "content": content}
-            
-        ],
-        2000,
-        {"type": "text"}
-    )
-    opinion_with_name = f'{persona_name}: {opinion}'
-    return opinion_with_name
+    try:
+        full_persona, persona_name = select_random_persona()
+        opinion = openai_api_call(
+            "gpt-3.5-turbo-1106",
+            0.6,
+            [
+                {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
+                {"role": "user", "content": content}
+            ],
+            2000,
+            {"type": "text"}
+        )
+        opinion_with_name = f'{persona_name}: {opinion}'
+        return opinion_with_name
+    except Exception as e:
+        logging.error(f"意見生成中にエラーが発生: {e}")
+        return f"エラーが発生しました: {e}"
 
-# 意見を生成する関数(2)
-def generate_opinion2(content):
-    full_persona, persona_name = select_random_persona()
-    opinion = openai_api_call(
-        "gpt-3.5-turbo-1106",
-        0.6,
-        [
-            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
-            {"role": "user", "content": content}
-        ],
-        2000,
-        {"type": "text"}
-    )
-    opinion_with_name2 = f'{persona_name}: {opinion}'
-    return opinion_with_name2
+# 共通のサービスアカウント認証情報を読み込む関数
+def get_service_account_credentials():
+    # Base64デコード
+    creds_json = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
+    # JSONパース  
+    creds = json.loads(creds_json)
+    return creds
 
-# 意見を生成する関数(3)
-def generate_opinion3(content):
-    full_persona, persona_name = select_random_persona()
-    opinion = openai_api_call(
-        "gpt-3.5-turbo-1106",
-        0.6,
-        [
-            {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
-            {"role": "user", "content": content}
-        ],
-        2000,
-        {"type": "text"}
-    )
-    opinion_with_name3 = f'{persona_name}: {opinion}'
-    return opinion_with_name3
+# Google Drive APIクライアント初期化関数
+def init_drive_service():
+    creds = get_service_account_credentials()
+    # 必要なスコープを指定して、サービスアカウントの認証情報を作成
+    service_account_info = creds
+    scopes = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+    credentials = Credentials.from_service_account_info(service_account_info, scopes=scopes)
+    # Drive APIクライアントを初期化
+    service = build('drive', 'v3', credentials=credentials)
+    return service
 
+# Google Driveへファイルをアップロードする関数
+def upload_file_to_drive(service, file_path, file_name):
+    file_metadata = {'name': file_name}
+    media = MediaIoBaseUpload(io.BytesIO(open(file_path, "rb").read()), mimetype='text/csv')
+    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
+    # ファイルIDを出力 (後で使いたい場合)
+    logging.info(f'Uploaded file ID: {file.get("id")}')
 
 
     # スプレッドシートに書き出す
 @on_exception(expo(base=4), gspread.exceptions.APIError, max_tries=2)
 @on_exception(expo(base=4), gspread.exceptions.GSpreadException, max_tries=2)
-def write_to_spreadsheet(row):
+def write_to_spreadsheet(row, retry_failed=False):
     if not SHEET_CLIENT:
         logging.error("スプレッドシートのクライアントが初期化されていません。")
         return False
@@ -260,11 +263,34 @@ def write_to_spreadsheet(row):
 
     except gspread.exceptions.APIError as e:
         logging.warning(f"一時的なエラー、リトライ可能: {e}")
+        if not retry_failed:
+            write_to_spreadsheet(row, retry_failed=True)
+        else:
+            write_to_csv(row)
         raise 
 
     except gspread.exceptions.GSpreadException as e:
         logging.error(f"致命的なエラー: {e}")
         raise
+
+# Google Drive APIクライアント初期化
+DRIVE_SERVICE = init_drive_service()
+
+def write_to_csv(row):
+    # 現在の時刻でファイル名を生成
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"backup_{timestamp}.csv"
+    file_path = f'/tmp/{filename}'  # Cloud Function の一時ディレクトリ
+
+    # CSVへの書き込み
+    with open(file_path, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(row)
+    
+    # Google Driveにアップロード
+    upload_file_to_drive(DRIVE_SERVICE, file_path, filename)
+    # 一時ファイルをクリーンアップ（オプション）
+    os.remove(file_path)
 
 
 
@@ -317,18 +343,20 @@ def heavy_task(article_title, article_url):
             logging.warning(f"要約の洗練に失敗: {article_url}")
             return None
         
+        # ThreadPoolExecutorを使用して意見を並列生成
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_opinion = {
-                executor.submit(generate_opinion, final_summary): 'opinion1',
-                executor.submit(generate_opinion2, final_summary): 'opinion2',
-                executor.submit(generate_opinion3, final_summary): 'opinion3',
-        }
-        opinions = []
-        for future in as_completed(future_to_opinion):
-            try:
-                opinions.append(future.result())
-            except Exception as e:
-                logging.error(f"{article_url} の意見生成中にエラーが発生: {e}")
+            futures = [executor.submit(generate_opinion, final_summary) for _ in range(3)]
+
+            opinions = []
+            for future in as_completed(futures):
+                result = future.result()
+            if result.startswith("エラーが発生しました"):
+                logging.warning(f"意見生成中にエラーが発生: {result}")
+            else:
+                opinions.append(result)
+
+        if not opinions:
+            logging.warning(f"すべての意見生成関数がエラーをスローしました: {article_url}")
 
         
         # スプレッドシートに書き込む準備
