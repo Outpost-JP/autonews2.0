@@ -1,21 +1,13 @@
-# テスト用
-# import functions_framework
+import functions_framework
 import threading
-import openai
-import flaskfrom markupsafe import escape
-from openai import OpenAI
-import asyncio
+import flask
+from markupsafe import escape
 import requests
-import logging
 import json
 import os
-import re
-from urllib.parse import urlparse
-import time
 from backoff import expo, on_exception
 from bs4 import BeautifulSoup
 import gspread
-import base64
 import traceback
 import langchain
 from langchain.prompts import PromptTemplate
@@ -23,6 +15,13 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains.summarize import load_summarize_chain
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.docstore.document import Document
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import base64  # base64の重複インポートを削除
+import logging  # loggingの重複インポートを削除
+from openai import OpenAI
+
+
 
 
 def summarize_content(content):
@@ -44,82 +43,6 @@ def summarize_content(content):
         logging.error(f"要約処理中にエラーが発生しました: {e}")
         traceback.print_exc()
         return None
-
-# パラメーターを書き出す
-parameter = '''
-{
-    "properties": {
-        "importance": {
-            "type": "integer",
-            "description": "How impactful the topic of the article is. Scale: 0-10."
-        },
-        "timeliness": {
-            "type": "integer",
-            "description": "How relevant the information is to current events or trends. Scale: 0-10."
-        },
-        "objectivity": {
-            "type": "integer",
-            "description": "Whether the information is presented without bias or subjective opinion. Scale: 0-10."
-        },
-        "originality": {
-            "type": "integer",
-            "description": "The novelty or uniqueness of the content. Scale: 0-10."
-        },
-        "target_audience": {
-            "type": "integer",
-            "description": "How well the content is adjusted for a specific audience. Scale: 0-10."
-        },
-        "diversity": {
-            "type": "integer",
-            "description": "Reflection of different perspectives or cultures. Scale: 0-10."
-        },
-        "relation_to_advertising": {
-            "type": "integer",
-            "description": "If the content is biased due to advertising. Scale: 0-10."
-        },
-        "security_issues": {
-            "type": "integer",
-            "description": "Potential for raising security concerns. Scale: 0-10."
-        },
-        "social_responsibility": {
-            "type": "integer",
-            "description": "How socially responsible the content presentation is. Scale: 0-10."
-        },
-        "social_significance": {
-            "type": "integer",
-            "description": "The social impact of the content. Scale: 0-10."
-        }
-        "reason": {
-        "type": "string",
-        "description": "the basis for each numerical score. Output in 1-sentence Japanese with respect to all parameters"
-        }
-    },
-    "required": ["importance", "timeliness", "objectivity", "originality", "target_audience", "diversity", "relation_to_advertising", "security_issues", "social_responsibility", "social_significance", "reason"]
-}
-'''
-
-# スコアを書き出す
-def generate_score(summary):
-    try:
-        score = openai_api_call(
-            "gpt-3.5-turbo-1106",
-            0,
-            [
-                {"role": "system", "content": f'あなたは優秀な先進技術メディアのキュレーターです。信頼性,最新性,重要性,革新性,影響力,関連性,包括性,教育的価値,時事性,倫理性をもとに、"""{summary}"""を10点満点でスコアリングして、JSON形式で返します。平均点は5点でスコアを付けるようにしてください。"""{parameter}"""のJSON形式で返してください。'},
-                {"role": "user", "content": summary}
-            ],
-            4000,
-            { "type":"json_object" }
-            )
-        score_json = json.loads(score)
-        # 応答を整形して返す
-        formatted_score = json.dumps(score_json, indent=2, ensure_ascii=False)
-        return formatted_score
-    except Exception as e:
-        logging.warning(f"スコア測定時にエラーが発生しました。: {e}")
-        traceback.print_exc()
-        return ""
-
 
 # 定数
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')  
@@ -162,12 +85,18 @@ def init_gspread():
 
     # gspread認証
     gc = gspread.service_account_from_dict(creds)  
+    '''ここを絶対に見逃すなこれまでの奴も書き換えろ！！！！！！！！！！！！！
+    ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+    ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+    '''
+    # タイムアウトを設定（ここでは30秒）
+    gc.session.timeout = 30
 
     # スプレッドシートオープン
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
 
     # 2枚目のシート取得
-    worksheet = spreadsheet.get_worksheet(1)
+    worksheet = spreadsheet.get_worksheet(3)
     return worksheet
 
 
@@ -237,34 +166,71 @@ def parse_content(content):
     except Exception as e:
         logging.warning(f"コンテンツのパース中にエラーが発生しました: {e}")
         return None
-    
+
+# ランダムペルソナを選択する関数
+def select_random_persona():
+    # 定義されたペルソナの辞書
+    personas = {
+        1: "佐藤ユウキ - 職業: 大学院生、AI研究者, 性格: 好奇心旺盛、論理的、やや内向的, 思想: テクノロジーの民主化を信じており、オープンソース運動を支持, 宗教: 特定の宗教には属していないが、宇宙論的パンティズムに共感を覚える, 人種/民族: 日本人, バックグラウンド: 東京の大学でコンピュータサイエンスを専攻し、AIに魅了された。特に機械学習と人間の認知の関連性に興味があり、学際的な研究を志向している。",
+        2: "Amina Hussein - 職業: ソフトウェアエンジニア、AIスタートアップの共同創業者, 性格: 外向的、決断力があり、リーダーシップに富む, 思想: 社会起業家精神を持ち、技術を利用して途上国の問題を解決したいと考えている, 宗教: イスラム教徒, 人種/民族: ソマリア系アメリカ人, バックグラウンド: アメリカで育ち、シリコンバレーの名門大学でコンピュータサイエンスを学んだ。彼女のスタートアップは、AIを使って教育と健康の分野で革新をもたらすことを目指している。",
+        3: "Carlos García - 職業: AI倫理学者、大学教授,性格: 深い思考家、倫理的な問題に対して熱心、公正を重んじる,思想: テクノロジーと倫理の交差点において、社会的責任を重要視する,宗教: カトリック,人種/民族: ヒスパニック（メキシコ系アメリカ人）,バックグラウンド: メキシコで生まれ育ち、アメリカの大学で哲学とコンピュータサイエンスの両方を学んだ。現在、AIの社会的影響に関する論文を多数発表している。",
+        4: "Priya Singh - 職業: データサイエンティスト、医療AIの専門家,性格: 細部に注意を払い、慎重、共感的,思想: 科学とデータの力を信じ、医療分野でのAIの可能性に情熱を持っている,宗教: ヒンドゥー教,人種/民族: インド系カナダ人,バックグラウンド: トロントでコンピュータサイエンスの学位を取得後、医療技術に特化した。彼女はAIを用いて病気の早期発見と治療法の改善に貢献している。",
+        5: "David Okafor - 職業: AIアプリケーション開発者、フリーランサー,性格: 創造的、柔軟性があり、協調性がある,思想: デジタルノマドとしてのライフスタイルを享受し、仕事と旅を組み合わせることで多様な文化を経験している,宗教: 宗教には無関心,人種/民族: ナイジェリア系イギリス人,バックグラウンド: ロンドンの大学でソフトウェアエンジニアリングを学んだ後、世界中を旅しながらリモートでAIプロジェクトに取り組んでいる。彼はAIの民主化とアクセスの改善を目指しており、開発途上国のための技術支援に関心がある。",
+        6: "Susan Whitaker - 職業: 中学校の歴史教師, 性格: 伝統的、保守的、慎重, 思想: 新しいテクノロジーに懐疑的で、子供たちが基本的な思考力と人間関係を育むことを重視, 宗教: キリスト教プロテスタント, 人種/民族: 白人アメリカ人, バックグラウンド: ミシシッピ州の小さな町で育ち、地元の大学で教育学を学んだ後、地域社会の学校で教えている。テクノロジー特にAIが子供たちの教育に及ぼす影響に懸念を抱いている。",
+        7: "Raj Patel - 職業: 小規模農家, 性格: 勤勉、献身的、地域社会志向, 思想: 持続可能な農業と伝統的な農法を支持, 宗教: ヒンドゥー教, 人種/民族: インド系アメリカ人, バックグラウンド: カリフォルニアの農業コミュニティで育ち、家族経営の農場を継承。AIと自動化が農業コミュニティの雇用を奪うと信じており、地元の労働者の生計を守ることに尽力している。",
+        8: "Emma Larson - 職業: 書店経営者, 性格: 文学愛好家、内向的、思慮深い, 思想: デジタル化に対する抵抗感があり、紙の本と店頭での対話を大切にしている, 宗教: アグノスティック, 人種/民族: スウェーデン系アメリカ人, バックグラウンド: ニューヨークで独立系の書店を経営しており、AIによる推薦システムではなく、人間のキュレーションを重んじる。デジタル化が読書体験を劣化させると考えている。",
+        9: "Carlos Ramirez - 職業: 自動車整備工, 性格: 実用主義者、堅実、家族を大切にする, 思想: 手に職を持つことの重要性を信じており、学徒制度と職人精神を尊重, 宗教: カトリック, 人種/民族: メキシコ系アメリカ人, バックグラウンド: テキサスの小さな町で育ち、地元のコミュニティカレッジで自動車整備を学んだ。AIと自動運転車の台頭による職業の未来について不安を抱えている。",
+        10: "Aisha Al-Farsi - 職業: 社会活動家, 性格: 激情的、説得力がある、正義感が強い, 思想: 人間の尊厳と労働権を擁護し、テクノロジーが社会不平等を拡大させることに反対, 宗教: イスラム教, 人種/民族: アラブ系アメリカ人, バックグラウンド: ニュージャージー州で生まれ育ち、人権に関する法学を学んだ後、労働者の権利と社会正義のために戦っている。AIによる監視とプライバシーの侵害に警鐘を鳴らしている。"
+    }
+
+    # 1から5までのランダムな整数を生成
+    random_number = random.randint(1, 10)
+
+    # 生成された整数に対応するペルソナを選択
+    selected_persona = personas[random_number]
+    # ペルソナの名前を抽出
+    persona_name = selected_persona.split(" - ")[0]
+    return selected_persona, persona_name
+
+# 意見を生成する関数 (統合版)
+def generate_opinion(content):
+    try:
+        full_persona, persona_name = select_random_persona()
+        opinion = openai_api_call(
+            "gpt-3.5-turbo-1106",
+            0.6,
+            [
+                {"role": "system", "content": f'あなたは"""{full_persona}"""です。提供された文章の内容に対し日本語で意見を生成してください。'},
+                {"role": "user", "content": content}
+            ],
+            2000,
+            {"type": "text"}
+        )
+        opinion_with_name = f'{persona_name}: {opinion}'
+        return opinion_with_name
+    except Exception as e:
+        logging.error(f"意見生成中にエラーが発生: {e}")
+        return f"エラーが発生しました: {e}"
+
     # スプレッドシートに書き出す
-@on_exception(expo, gspread.exceptions.APIError, max_tries=3)
-@on_exception(expo, gspread.exceptions.GSpreadException, max_tries=3)
+@on_exception(expo, gspread.exceptions.APIError, max_tries=2, base=4)
+@on_exception(expo, gspread.exceptions.GSpreadException, max_tries=2, base=4)
 def write_to_spreadsheet(row):
     if not SHEET_CLIENT:
         logging.error("スプレッドシートのクライアントが初期化されていません。")
         return False
-    time.sleep(1)  # 1秒スリープを追加
+    
     try:
         logging.info(f"スプレッドシートへの書き込みを開始: {row}")
-        # スプレッドシートの初期化
         worksheet = SHEET_CLIENT
-
-        # スプレッドシートに書き込み
-        worksheet.append_row(row)
-
+        worksheet.insert_row(row, 2)  # A2からD2に行を挿入
         logging.info(f"スプレッドシートへの書き込みが成功: {row}")
-
     except gspread.exceptions.APIError as e:
-        logging.warning(f"一時的なエラー、リトライ可能: {e}")
-        raise 
-
-    except gspread.exceptions.GSpreadException as e:
-        logging.error(f"致命的なエラー: {e}")
+        logging.error(f"スプレッドシートへの書き込み中にAPIエラーが発生: {e}")
         raise
-
-
+    except gspread.exceptions.GSpreadException as e:
+        logging.error(f"スプレッドシートへの書き込み中に致命的なエラーが発生: {e}")
+        raise
 
 # メインのタスクの部分
 def heavy_task(article_title, article_url):
@@ -276,47 +242,96 @@ def heavy_task(article_title, article_url):
             return
 
         parsed_content = parse_content(content)
-        if parse_content is None:
+        if parsed_content is None:
             logging.warning(f"コンテンツのパースに失敗: {article_url}")
             return
 
-        # 初期要約を生成
-        preliminary_summary = summarize_content(parsed_content)
-        if preliminary_summary is None:
-            logging.warning(f"コンテンツの要約に失敗: {article_url}")
-            return
+        # parsed_contentが10000文字以下なら直接OpenAIに渡す
+        if len(parsed_content) <= 10000:
+            final_summary = openai_api_call(
+                "gpt-4-1106-preview",
+                0,
+                [
+                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。"},
+                    {"role": "user", "content": parsed_content}
+                ],
+                4000,
+                {"type": "text"}
+            )
+            if not final_summary:
+                logging.warning(f"要約の洗練に失敗: {article_url}")
+                return None
+        else:
+            # 初期要約を生成
+            preliminary_summary = summarize_content(parsed_content)
+            if preliminary_summary is None:
+                logging.warning(f"コンテンツの要約に失敗: {article_url}")
+                return
 
-        # OpenAIを使用してさらに要約を洗練
-        final_summary = openai_api_call(
-            "gpt-4-1106-preview",
+            # OpenAIを使用してさらに要約を洗練
+            final_summary = openai_api_call(
+                "gpt-4-1106-preview",
+                0,
+                [
+                    {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ、日本語で要約してください。テーマごとに分割してリスト形式にすることは行わないでください。"},
+                    {"role": "user", "content": preliminary_summary}
+                ],
+                4000,
+                {"type": "text"}
+            )
+
+            if not final_summary:
+                logging.warning(f"要約の洗練に失敗: {article_url}")
+            return None
+        
+        # リード文生成のためのOpenAI API呼び出し
+        try:
+            lead_sentence = openai_api_call(
+            "gpt-4",
             0,
             [
-                {"role": "system", "content": "あなたは優秀な要約アシスタントです。提供された文章の内容を出来る限り残しつつ。日本語で要約してください。"},
-                {"role": "user", "content": preliminary_summary}
+                {"role": "system", "content": "あなたは優秀なライターです。この要約のリード文（導入部）を作成してください。"},
+                {"role": "user", "content": final_summary}
             ],
-            4000,
+            500,  # リード文の最大トークン数を適宜設定
             {"type": "text"}
-        )
-        if not final_summary:
-            logging.warning(f"要約の洗練に失敗: {article_url}")
-            return None
+            )
+            if not lead_sentence:
+                logging.warning(f"リード文の生成に失敗: {article_url}")
+                lead_sentence = "リード文の生成に失敗しました。"
+        except Exception as e:
+            logging.error(f"リード文生成中にエラーが発生: {e}")
+            lead_sentence = "リード文の生成中にエラーが発生しました。"
+        
+        
+        # ThreadPoolExecutorを使用して意見を並列生成
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(generate_opinion, final_summary) for _ in range(3)]
 
-        # 要約のスコアを生成
-        score = generate_score(final_summary)
-        if not score:
-            logging.warning(f"スコアの生成に失敗: {article_url}")
-            return ""
+            opinions = []
+            for future in as_completed(futures):
+                result = future.result()
+            if result.startswith("エラーが発生しました"):
+                logging.warning(f"意見生成中にエラーが発生: {result}")
+            else:
+                opinions.append(result)
+
+        if not opinions:
+            logging.warning(f"すべての意見生成関数がエラーをスローしました: {article_url}")
+
+        
+        # スプレッドシートに書き込む準備
+        spreadsheet_content = [article_title, article_url, final_summary, lead_sentence] + opinions
 
         # スプレッドシートに書き込む
-        write_to_spreadsheet([article_title, article_url, final_summary, score])
+        write_to_spreadsheet(spreadsheet_content)
         logging.info(f"処理完了: {article_url}")
 
     except Exception as e:
         logging.error(f"{article_url} の処理中にエラーが発生: {e}")
         traceback.print_exc()
 
-# gcfにデプロイする時以外は消すこと
-# @functions_framework.http
+@functions_framework.http
 def process_inoreader_update(request):
     request_json = request.get_json()
 
@@ -335,8 +350,10 @@ def process_inoreader_update(request):
                 # 重い処理を非同期で実行するために別のスレッドを起動
                 thread = threading.Thread(target=heavy_task, args=(article_title, article_href))
                 thread.start()
-
         # メインスレッドでは即座に応答を返す
-        return '記事の更新を受け取りました'
+        return '記事の更新を受け取りました', 200
     else:
-        return '適切なデータがリクエストに含まれていません'
+        return '適切なデータがリクエストに含まれていません', 400
+        
+         
+
